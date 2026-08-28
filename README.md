@@ -8,7 +8,7 @@
 - **Live URL:** _(pending first deploy)_
 - **Demo video:** _(pending)_
 
-Every WebMCP demo so far answers *"what can a site let an agent do?"* with a fixed list the site's developer chose. Anvil makes that list open-ended and authored by the user: the moment your agent nails a fiddly task, you turn that one-off success into a permanently callable WebMCP tool. The agent writes the code, you approve the behaviour and own the wording, and it registers live — no reload, no deploy, no OAuth flow.
+WebMCP's own framing is that a *site* declares the tools it exposes — the question is "what can a site let an agent do?", and the developer chooses the answer at build time. Anvil asks the adjacent question: what if the user chooses, at runtime? the moment your agent nails a fiddly task, you turn that one-off success into a permanently callable WebMCP tool. The agent writes the code, you approve the behaviour and own the wording, and it registers live — no reload, no deploy, no OAuth flow.
 
 ## The problem: procedural drift
 

@@ -43,7 +43,7 @@ And because a growing tool surface makes an agent *worse* at choosing, Anvil sho
 
 **Extend the tool surface of a running web app, collaboratively, with the human holding the registration key.**
 
-Every WebMCP app shipped so far exposes a fixed list of tools chosen by the site's developer. The question they answer is "what can a site let an agent do?" Anvil makes that list open-ended and authored by the user: the agent writes the code, the human writes the prose and grants the capabilities, and a tool that did not exist sixty seconds ago becomes callable — no reload, no deploy, no OAuth.
+WebMCP's framing is that a *site* declares the tools it exposes: the question is "what can a site let an agent do?", and the site's developer answers it at build time. Anvil asks the adjacent question — what if the *user* answers it, at runtime? the agent writes the code, the human writes the prose and grants the capabilities, and a tool that did not exist sixty seconds ago becomes callable — no reload, no deploy, no OAuth.
 
 The division of labour is the design, and it is a security property rather than a convenience:
 
