@@ -2,13 +2,27 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
-      "source": "/(.*)",
+      "comment": "The executor. 'unsafe-eval' is required by new Function and is confined to this one path; the frame runs at an opaque origin because the parent frames it with sandbox=allow-scripts and no allow-same-origin. The script is inline because 'self' does not match an opaque origin in a CSP source list.",
+      "source": "/sandbox/(.*)",
+      "headers": [
+        { "key": "Origin-Agent-Cluster", "value": "?1" },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
+        },
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "no-referrer" }
+      ]
+    },
+    {
+      "comment": "Everything except /sandbox/. The negative lookahead matters: two matching rules would both apply, and multiple CSP headers are enforced as an intersection, which would strip 'unsafe-eval' back out of the executor.",
+      "source": "/((?!sandbox/).*)",
       "headers": [
         { "key": "Origin-Agent-Cluster", "value": "?1" },
         { "key": "Permissions-Policy", "value": "tools=(self)" },
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'"
+          "value": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self'; base-uri 'none'; object-src 'none'; form-action 'none'"
         },
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Referrer-Policy", "value": "no-referrer" }

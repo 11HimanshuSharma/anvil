@@ -202,3 +202,18 @@ button.icon.danger:hover { color: var(--bad); border-color: #55292b; }
 .audit-args { color: #5b6371; }
 .audit-error { color: var(--bad); }
 .audit-ms { margin-left: auto; color: #3f4653; }
+
+/* ================================================== sandbox test harness ==== */
+.cases { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.case { display: flex; gap: 12px; align-items: baseline; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #0e1013; }
+.case[data-pass="true"] { border-color: #24503a; }
+.case[data-pass="false"] { border-color: #55292b; }
+.case-mark { font: 600 11px/1 var(--mono); flex: 0 0 34px; }
+.case[data-pass="true"] .case-mark { color: var(--ok); }
+.case[data-pass="false"] .case-mark { color: var(--bad); }
+.case-body { display: grid; gap: 3px; min-width: 0; }
+.case-name { font: 12px/1 var(--mono); color: var(--text); }
+.case-claim { font-size: 13px; color: var(--dim); }
+.case-detail { font: 11px/1.5 var(--mono); color: #5b6371; word-break: break-word; }
+.badge[data-ok="true"] { border-color: var(--ok); color: var(--ok); }
+.badge[data-ok="false"] { border-color: var(--bad); color: var(--bad); }

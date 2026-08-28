@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Anvil — sandbox containment tests</title>
+  </head>
+  <body>
+    <main class="page">
+      <header class="head">
+        <div>
+          <h1>Sandbox containment tests</h1>
+          <p class="sub">
+            Every claim in the README's security table, as a runnable assertion against the real
+            executor frame.
+          </p>
+        </div>
+        <div class="badge" id="summary" data-ok="false">running…</div>
+      </header>
+      <section class="card">
+        <ol class="cases" id="results"></ol>
+      </section>
+    </main>
+    <script type="module" src="/src/sandboxTests.ts"></script>
+  </body>
+</html>

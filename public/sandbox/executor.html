@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>anvil executor</title>
+  </head>
+  <body>
+    <!--
+      This document runs at an OPAQUE ORIGIN.
+
+      The parent frames it with sandbox="allow-scripts" and no allow-same-origin,
+      which is what makes the origin opaque: this document cannot touch the
+      parent's IndexedDB, localStorage, cookies or DOM, and any fetch it managed
+      to make would be credential-less and cross-origin.
+
+      The script is inline on purpose. 'self' does not match an opaque origin in
+      a CSP source list, so an external <script src> would be a coin flip across
+      engines. The path-scoped CSP for /sandbox/ is therefore:
+
+        default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval';
+        frame-ancestors 'self'
+
+      'unsafe-eval' is required by new Function, and confining it to this one
+      path is exactly why the path exists. The app's own pages keep a strict CSP.
+    -->
+    <script>
+      (() => {
+        'use strict';
+        // Report a fatal boot failure instead of hanging until the parent's
+        // 5s timeout. Captured first, before anything else can go wrong.
+        const reportBoot = (error) => {
+          try {
+            window.parent.postMessage({ t: 'bootError', error: String(error) }, '*');
+          } catch {
+            /* nothing left to report with */
+          }
+        };
+        try {
+
+        // Capture everything we need BEFORE any user code runs, so that patching
+        // a prototype later cannot intercept our messages or re-enter us.
+        const stringify = JSON.stringify;
+        const parse = JSON.parse;
+        // The AsyncFunction constructor, not Function: every host call returns a
+        // promise, so tool code is written with await and a sync Function body
+        // rejects it as a syntax error.
+        const AsyncFunctionCtor = Object.getPrototypeOf(async function () {}).constructor;
+        const postToParent = window.parent.postMessage.bind(window.parent);
+
+        /** @type {MessagePort | null} */
+        let port = null;
+        let post = null;
+
+        /** Pending host RPC calls, keyed by call id. */
+        const pending = new Map();
+        let seq = 0;
+        let activeExec = 0;
+        let hostCalls = 0;
+        let maxHostCalls = 200;
+
+        /**
+         * Remove obvious ambient reach. This is defence in depth, NOT the
+         * boundary - the opaque origin is the boundary. A determined script can
+         * often recover a global; it still cannot recover an origin.
+         */
+        for (const key of [
+          'fetch',
+          'XMLHttpRequest',
+          'WebSocket',
+          'Worker',
+          'SharedWorker',
+          'importScripts',
+          'indexedDB',
+          'caches',
+          'EventSource',
+          'navigator',
+          'openDatabase',
+          'BroadcastChannel',
+        ]) {
+          try {
+            delete self[key];
+          } catch {
+            /* non-configurable; nothing we can do, and nothing it can reach */
+          }
+        }
+
+        function call(method, params) {
+          if (hostCalls >= maxHostCalls) {
+            return Promise.reject(
+              new Error(`host_call_limit: more than ${maxHostCalls} host calls in one execution`),
+            );
+          }
+          hostCalls += 1;
+          const exec = activeExec;
+          return new Promise((resolve, reject) => {
+            const id = ++seq;
+            pending.set(id, { resolve, reject });
+            post({ t: 'host', id, exec, method, params });
+          });
+        }
+
+        /** Builds the `host` object a tool sees, shaped by its granted capabilities. */
+        function makeHost(capabilities) {
+          const caps = Array.isArray(capabilities) ? capabilities : [];
+          const host = {};
+
+          if (caps.includes('read:items')) {
+            host.items = {
+              list: (query) => call('items.list', query ?? {}),
+              get: (id) => call('items.get', id),
+            };
+          }
+          if (caps.includes('write:items')) {
+            host.items = Object.assign(host.items ?? {}, {
+              upsert: (item) => call('items.upsert', item),
+              remove: (id) => call('items.remove', id),
+            });
+          }
+          if (caps.includes('net')) {
+            host.fetchJson = (url, init) => call('net.fetch', { url, init });
+          }
+          host.log = (message) => call('log', String(message));
+
+          if (host.items) Object.freeze(host.items);
+          return Object.freeze(host);
+        }
+
+        async function runExec(message) {
+          activeExec = message.id;
+          hostCalls = 0;
+          try {
+            const fn = new AsyncFunctionCtor('args', 'host', `"use strict";\n${message.code}`);
+            const output = await fn(message.args, makeHost(message.capabilities));
+            // Round-trip here so a non-serialisable return fails inside the
+            // sandbox with a clear message, not silently at the agent.
+            const value = output === undefined ? null : parse(stringify(output) ?? 'null');
+            post({ t: 'execResult', id: message.id, ok: true, value });
+          } catch (error) {
+            post({
+              t: 'execResult',
+              id: message.id,
+              ok: false,
+              error: String((error && error.message) || error),
+            });
+          } finally {
+            activeExec = 0;
+            // Drop anything still waiting: its execution is over.
+            for (const [, entry] of pending) entry.reject(new Error('execution_finished'));
+            pending.clear();
+          }
+        }
+
+        function onPortMessage(event) {
+          const message = event.data;
+          if (!message || typeof message !== 'object') return;
+
+          if (message.t === 'hostResult') {
+            const entry = pending.get(message.id);
+            if (!entry) return;
+            pending.delete(message.id);
+            if (message.ok) entry.resolve(message.value);
+            else entry.reject(new Error(String(message.error)));
+            return;
+          }
+
+          if (message.t === 'exec') {
+            void runExec(message);
+          }
+        }
+
+        /**
+         * The parent hands us one end of a MessageChannel. We keep it in this
+         * closure, so user code has no reference to it and cannot forge host
+         * calls or results - it can only reach the parent through the frozen
+         * `host` object it was given.
+         */
+        function onWindowMessage(event) {
+          if (event.source !== window.parent) return;
+          if (!event.data || event.data.t !== 'init') return;
+          if (port) return; // already initialised; ignore any later attempt
+          port = event.ports[0];
+          if (!port) return;
+          post = port.postMessage.bind(port);
+          if (typeof event.data.maxHostCalls === 'number') {
+            maxHostCalls = event.data.maxHostCalls;
+          }
+          port.onmessage = onPortMessage;
+          port.start();
+          window.removeEventListener('message', onWindowMessage);
+          post({ t: 'ready' });
+        }
+
+        window.addEventListener('message', onWindowMessage);
+        // Tell the parent we are alive so it knows to send the port.
+        postToParent({ t: 'boot' }, '*');
+        } catch (error) {
+          reportBoot(error);
+        }
+      })();
+    </script>
+  </body>
+</html>

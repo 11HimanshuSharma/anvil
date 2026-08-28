@@ -215,16 +215,16 @@ function normaliseStatus(status: unknown): ItemStatus | undefined {
   return status;
 }
 
-/** Upsert. An `id` that exists updates in place; anything else creates. */
-export async function saveItem(input: SaveItemInput): Promise<Item> {
-  const database = await db();
-  const now = Date.now();
-  const existing = input.id ? await database.get('items', input.id) : undefined;
-
-  if (input.id && !existing) {
-    throw new ItemValidationError('id', `No item with id ${input.id}`);
-  }
-
+/**
+ * Pure merge: given the current record (if any) and an update, produce the next
+ * record or throw. Kept free of I/O so the sandbox's dry-run mode can compute
+ * exactly what *would* happen without writing anything.
+ */
+export function buildItem(
+  existing: Item | undefined,
+  input: SaveItemInput,
+  now: number = Date.now(),
+): Item {
   const tags = normaliseTags(input.tags);
   const status = normaliseStatus(input.status);
 
@@ -257,7 +257,18 @@ export async function saveItem(input: SaveItemInput): Promise<Item> {
       updatedAt: now,
     };
   }
+  return next;
+}
 
+/** Upsert. An `id` that exists updates in place; anything else creates. */
+export async function saveItem(input: SaveItemInput): Promise<Item> {
+  const database = await db();
+  const existing = input.id ? await database.get('items', input.id) : undefined;
+  if (input.id && !existing) {
+    throw new ItemValidationError('id', `No item with id ${input.id}`);
+  }
+
+  const next = buildItem(existing, input);
   await database.put('items', next);
   notify();
   return next;

@@ -6,7 +6,11 @@ export default defineConfig({
     sourcemap: true,
     rollupOptions: {
       // Two entry points: the workspace, and the §1 go/no-go registration probe.
-      input: { main: 'index.html', probe: 'probe.html' },
+      input: {
+        main: 'index.html',
+        probe: 'probe.html',
+        sandboxTests: 'sandbox-tests.html',
+      },
     },
   },
   server: { port: 5173, strictPort: true },

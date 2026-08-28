@@ -1,4 +1,5 @@
 import './style.css';
+import { sandbox } from './sandbox/host';
 import { record } from './store/audit';
 import { ensureSeeded } from './store/items';
 import { builtinTools } from './tools/builtin';
@@ -119,4 +120,4 @@ async function boot(): Promise<void> {
 void boot();
 
 // Exposed for DevTools and the Model Context Tool Inspector.
-Object.assign(window, { anvil: { mc, binding, registry } });
+Object.assign(window, { anvil: { mc, binding, registry, sandbox } });
