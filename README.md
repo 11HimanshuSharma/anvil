@@ -229,7 +229,16 @@ To use it with an agent: open the deployed HTTPS URL in the ChatGPT desktop app'
 
 ## Deployment
 
-Headers matter more than usual: WebMCP needs a secure context and an origin-isolated document, and `Origin-Agent-Cluster: ?0` disables it entirely. See [`vercel.json`](vercel.json) — note the negative lookahead, which keeps the strict app CSP from intersecting with the executor's and stripping `unsafe-eval` back out.
+Headers matter more than usual: WebMCP needs a secure context and an origin-isolated document, and `Origin-Agent-Cluster: ?0` disables it entirely.
+
+[`vercel.json`](vercel.json) has two rules, and the order and the **negative lookahead** both matter:
+
+| Path | `script-src` |
+| --- | --- |
+| `/sandbox/(.*)` | `'unsafe-inline' 'unsafe-eval'` — `new Function` lives here and only here |
+| `/((?!sandbox/).*)` | `'self'` — the app's own pages, no eval |
+
+If the second rule were a plain catch-all, both would match `/sandbox/` and the browser would enforce the **intersection** of the two policies, silently stripping `unsafe-eval` back out and breaking every custom tool in production only. (`vercel.json` is JSON and cannot carry comments — Vercel rejects unknown keys — so this note lives here.)
 
 ```bash
 curl -sI https://<your-url> | grep -i -E 'origin-agent|permissions-policy|content-security'

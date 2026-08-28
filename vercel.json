@@ -2,7 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "headers": [
     {
-      "comment": "The executor. 'unsafe-eval' is required by new Function and is confined to this one path; the frame runs at an opaque origin because the parent frames it with sandbox=allow-scripts and no allow-same-origin. The script is inline because 'self' does not match an opaque origin in a CSP source list.",
       "source": "/sandbox/(.*)",
       "headers": [
         { "key": "Origin-Agent-Cluster", "value": "?1" },
@@ -15,7 +14,6 @@
       ]
     },
     {
-      "comment": "Everything except /sandbox/. The negative lookahead matters: two matching rules would both apply, and multiple CSP headers are enforced as an intersection, which would strip 'unsafe-eval' back out of the executor.",
       "source": "/((?!sandbox/).*)",
       "headers": [
         { "key": "Origin-Agent-Cluster", "value": "?1" },
