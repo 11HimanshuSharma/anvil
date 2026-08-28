@@ -1,7 +1,7 @@
 import { summariseMutations } from '../sandbox/diff';
 import { sandbox } from '../sandbox/host';
 import { newId } from '../store/db';
-import { createProposal, getProposal, updateProposal } from '../store/proposals';
+import { createProposal, getProposal, pendingProposals, updateProposal } from '../store/proposals';
 import { listTools } from '../store/tools';
 import { isCapability, type Capability, type DryRunResult, type Proposal, type ToolDef } from '../store/types';
 import { findOverlaps } from '../surface/entropy';
@@ -36,9 +36,22 @@ function asString(args: Record<string, unknown>, key: string): string | undefine
   return value === undefined || value === null ? undefined : String(value);
 }
 
+/**
+ * Names that are already spoken for: built-ins, stored tools (including
+ * archived ones), and names held by a proposal still awaiting review. Without
+ * that last set, two pending proposals could share a name and the second would
+ * fail at the Approve click with a raw duplicate error - far too late.
+ */
 async function reservedNames(): Promise<Set<string>> {
-  const custom = await listTools({ includeArchived: true });
-  return new Set([...builtinTools.map((tool) => tool.name), ...custom.map((tool) => tool.name)]);
+  const [custom, pending] = await Promise.all([
+    listTools({ includeArchived: true }),
+    pendingProposals(),
+  ]);
+  return new Set([
+    ...builtinTools.map((tool) => tool.name),
+    ...custom.map((tool) => tool.name),
+    ...pending.map((proposal) => proposal.draft.name),
+  ]);
 }
 
 function parseCapabilities(value: unknown): Capability[] | Failure {
@@ -149,8 +162,8 @@ const proposeTool: ModelContextTool = {
     if ((await reservedNames()).has(name)) {
       return fail(
         'name_taken',
-        `A tool named "${name}" already exists`,
-        'Call list_available_tools to see what exists, then either pick a different name or propose extending the existing tool.',
+        `The name "${name}" is already taken by a registered tool, an archived one, or a proposal still awaiting review`,
+        'Call list_available_tools to see what exists. Either pick a different name, or wait for the pending proposal to be reviewed.',
       );
     }
     if (!description || description.trim() === '') {

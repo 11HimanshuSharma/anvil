@@ -106,7 +106,21 @@ Every tool you keep is context your agent carries into every turn, and overlappi
 score = 0.6 · jaccard(description tokens) + 0.4 · trigram(name)      ≥ 0.55 → overlapping
 ```
 
-Two consequences are shipped: a proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action, demoting "Approve as a new tool anyway" to secondary; and the surface panel shows a live context-cost meter (*"~1,771 tokens of tool definitions"*). `retirementCandidates()` computes tools unused for 14 days but nothing calls it yet — see Known limitations.
+Three consequences, all shipped:
+
+1. A proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action, demoting "Approve as a new tool anyway" to secondary.
+2. The surface panel shows a live context-cost meter — *"9 tools · ~1,771 tokens of definitions · 6 read, 3 write"* — plus per-tool usage (*"2 calls, last today"* / *"never called"*).
+3. Tools that stop earning their keep get a **retire?** chip, which unregisters and archives them, freeing the context their definition was costing.
+
+The threshold is **calibrated, not guessed** (`npm run calibrate`):
+
+```
+should flag      0.346 .. 0.600   (same job, different name)
+should not flag  0.000 .. 0.078   (genuinely different jobs)
+threshold 0.25 — all 6 labelled pairs classified correctly
+```
+
+It started at 0.55, which sat *inside* the should-flag range and silently missed two of three real duplicates, including `triage_queue` vs `triage_reading_queue` — the exact fragmentation the feature exists to prevent. An e2e test caught it. The calibration runs in CI, so the number cannot drift back into hand-waving.
 
 ## Security model
 
@@ -162,7 +176,7 @@ npm test
 
 - **`npm run test:sandbox`** — 21 containment assertions, one per claim in the table above: opaque-origin storage denial, no parent DOM, capability shape *and* parent-side enforcement, watchdog kill and recovery, result cap, host-call cap, network allowlist including a successful fetch. Open [`/sandbox-tests.html`](sandbox-tests.html) to watch it run.
 - **`npm run test:fallback`** — the same 21 against the reduced-isolation worker, so the degraded path is not a code path nobody executes.
-- **`npm run test:e2e`** — 24 assertions across the whole loop: the cold-open demo, propose → dry-run → the drawer's real UI → an in-progress description edit surviving a re-render → a second proposal queueing instead of hijacking the drawer → a real click on Approve → live registration with no reload → the agent calling the tool → idempotency → duplicate-name refusal → Escape-to-dismiss → survives a reload.
+- **`npm run test:e2e`** — 36 assertions across the whole loop: the cold-open demo, propose → dry-run → the drawer's real UI → an in-progress description edit surviving a re-render → a second proposal queueing instead of hijacking the drawer → a real click on Approve → live registration with no reload → the agent calling the tool → idempotency → duplicate-name refusal → Escape-to-dismiss → survives a reload → the injection scanner flagging a poisoned description and credential-shaped schema → overlap detection making consolidation primary → a retire chip freeing the context a tool cost.
 
 These caught real bugs that would otherwise have died on camera:
 
@@ -197,6 +211,8 @@ src/
   surface/     entropy (overlap, context cost, retirement), scan (injection flags)
   ui/          items, surfacePanel, drawer, auditLog, dom
 public/sandbox/executor.html    the opaque-origin executor
+public/sandbox/worker.js        the consent-gated reduced-isolation fallback
+probe.html                      the day-one live-registration probe, still green
 scripts/                        headless-Chrome test drivers
 ```
 
@@ -223,7 +239,8 @@ curl -sI https://<your-url> | grep -i -E 'origin-agent|permissions-policy|conten
 
 - **The `net` capability is bounded by the deployment's CSP.** The proxy fetch runs on the app's own origin, so `connect-src` is an outer bound that a per-tool allowlist cannot widen: a tool may request `api.example.com`, but if the deployed `connect-src` does not list it, the browser blocks the request before it leaves. The proxy returns an error saying exactly that rather than a bare "Failed to fetch". Read/write tools are unaffected.
 - One executor is reused across executions, so tools can pollute each other's globals. A correctness wart, not a capability leak — capabilities are enforced per execution, parent-side.
-- **Retirement chips are not shipped.** `retirementCandidates()` in `surface/entropy.ts` is correct and unused; the surface panel does not yet render it, and per-tool call counts are stored and returned by `list_available_tools` but not displayed. Toolpack export/import is not built either.
+- Toolpack export/import is not built.
+- Retirement suggestions use a 14-day window, so they are invisible in a short demo. Append `?retire=0` to shorten it and see the chip; it changes when a *suggestion* appears, and retiring is still a click.
 - `VITE_SANDBOX_ORIGIN` points the executor at a separate origin for defence in depth; using it also requires adding that origin to `frame-src` in [`vercel.json`](vercel.json).
 
 ## Submission

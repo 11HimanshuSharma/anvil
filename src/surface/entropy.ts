@@ -60,7 +60,19 @@ export function similarity(a: ComparableTool, b: ComparableTool): number {
   return 0.6 * jaccard(textA, textB) + 0.4 * trigramSimilarity(a.name, b.name);
 }
 
-export const OVERLAP_THRESHOLD = 0.55;
+/**
+ * Calibrated, not guessed. `npm run calibrate` scores labelled pairs:
+ *
+ *   should flag      0.346 .. 0.600   (same job, different name)
+ *   should not flag  0.000 .. 0.078   (genuinely different jobs)
+ *
+ * An earlier 0.55 sat inside the should-flag range and missed two of three
+ * real duplicates - including `triage_queue` vs `triage_reading_queue`, which
+ * is exactly the fragmentation this is for. 0.25 sits in the gap, biased
+ * toward catching: a false positive is a suggestion the user can wave away,
+ * while a false negative silently splits the tool surface.
+ */
+export const OVERLAP_THRESHOLD = 0.25;
 
 export interface Overlap {
   name: string;
@@ -83,7 +95,7 @@ export function findOverlaps(
 export function contextCost(tool: {
   name: string;
   description: string;
-  inputSchema: unknown;
+  inputSchema?: unknown;
 }): number {
   const payload = JSON.stringify({
     name: tool.name,
@@ -93,14 +105,24 @@ export function contextCost(tool: {
   return Math.ceil((payload?.length ?? 0) / 4);
 }
 
-const RETIREMENT_WINDOW_MS = 14 * 86_400_000;
+export const RETIREMENT_WINDOW_MS = 14 * 86_400_000;
 
-/** Tools that have earned their keep, and tools that have not. */
-export function retirementCandidates(tools: readonly ToolDef[], now: number = Date.now()): ToolDef[] {
+/**
+ * Tools that have earned their keep, and tools that have not.
+ *
+ * The window is a parameter rather than a constant so the UI can be shown and
+ * tested without waiting a fortnight - see `retirementWindow()` in the surface
+ * panel, which reads an override from the query string.
+ */
+export function retirementCandidates(
+  tools: readonly ToolDef[],
+  now: number = Date.now(),
+  windowMs: number = RETIREMENT_WINDOW_MS,
+): ToolDef[] {
   return tools.filter((tool) => {
     if (tool.archivedAt !== null) return false;
-    if (now - tool.createdAt < RETIREMENT_WINDOW_MS) return false;
+    if (now - tool.createdAt < windowMs) return false;
     if (tool.stats.calls === 0) return true;
-    return tool.stats.lastUsedAt !== null && now - tool.stats.lastUsedAt > RETIREMENT_WINDOW_MS;
+    return tool.stats.lastUsedAt !== null && now - tool.stats.lastUsedAt > windowMs;
   });
 }

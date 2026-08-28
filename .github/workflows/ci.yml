@@ -21,14 +21,16 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
+      # Backgrounded with its output captured, so a CI-only failure is
+      # diagnosable rather than a mystery.
       - name: Serve the built app
-        run: npx vite preview --port 5173 --strictPort &
+        run: |
+          npx vite preview --port 5173 --strictPort > preview.log 2>&1 &
+          echo $! > preview.pid
+          npx --yes wait-on http://localhost:5173/ --timeout 60000
 
-      - name: Wait for the server
-        run: npx --yes wait-on http://localhost:5173/ --timeout 60000
-
-      # The sandbox suites need a real browser: a src-loaded
-      # sandbox="allow-scripts" iframe is the thing under test.
+      # These need a real browser: a src-loaded sandbox="allow-scripts" iframe
+      # is the thing under test.
       - name: Sandbox containment (isolated)
         run: npm run test:sandbox
 
@@ -37,3 +39,14 @@ jobs:
 
       - name: End-to-end propose/approve/register loop
         run: npm run test:e2e
+
+      - name: Overlap threshold calibration
+        run: npm run calibrate
+
+      - name: Server log
+        if: failure()
+        run: cat preview.log
+
+      - name: Stop the server
+        if: always()
+        run: kill "$(cat preview.pid)" || true

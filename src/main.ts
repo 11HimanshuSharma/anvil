@@ -3,6 +3,7 @@ import { sandbox } from './sandbox/host';
 import { record } from './store/audit';
 import { ensureSeeded, reseed } from './store/items';
 import { listTools } from './store/tools';
+import { findOverlaps, OVERLAP_THRESHOLD, similarity } from './surface/entropy';
 import { builtinTools } from './tools/builtin';
 import { toModelContextTool } from './tools/custom';
 import { metaTools } from './tools/meta';
@@ -104,7 +105,7 @@ async function boot(): Promise<void> {
 
   mountItemsView(el('items'));
   mountDrawer(el('drawer'), registry);
-  mountSurfacePanel(el('surface'));
+  mountSurfacePanel(el('surface'), registry);
   mountAuditLog(el('log'));
   renderPrompts(el('prompts'));
   mountIsolationBanner(el('isolation'));
@@ -142,4 +143,6 @@ async function boot(): Promise<void> {
 void boot();
 
 // Exposed for DevTools and the Model Context Tool Inspector.
-Object.assign(window, { anvil: { mc, binding, registry, sandbox, reseed, callTool } });
+Object.assign(window, {
+  anvil: { mc, binding, registry, sandbox, reseed, callTool, entropy: { similarity, findOverlaps, threshold: OVERLAP_THRESHOLD } },
+});

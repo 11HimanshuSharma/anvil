@@ -32,17 +32,15 @@ export async function putTool(def: ToolDef): Promise<ToolDef> {
   return def;
 }
 
-/** Archive rather than delete: provenance is worth keeping, and it can be restored. */
+/**
+ * Retiring a tool archives it rather than deleting it: the provenance - who
+ * authored it, what description a human accepted - is worth keeping even once
+ * the tool has stopped earning the context it costs.
+ */
 export async function archiveTool(name: string): Promise<ToolDef | undefined> {
   const existing = await getTool(name);
   if (!existing) return undefined;
   return putTool({ ...existing, archivedAt: Date.now() });
-}
-
-export async function restoreTool(name: string): Promise<ToolDef | undefined> {
-  const existing = await getTool(name);
-  if (!existing) return undefined;
-  return putTool({ ...existing, archivedAt: null });
 }
 
 export async function bumpStats(name: string, outcome: { ok: boolean }): Promise<void> {

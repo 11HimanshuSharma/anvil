@@ -19,6 +19,7 @@ export function onAuditChanged(listener: Listener): () => void {
 /** Results land in the model's context, so keep the stored copy bounded too. */
 const MAX_RESULT_CHARS = 2_000;
 const MAX_ENTRIES = 500;
+const MAX_ARG_CHARS = 300;
 
 function truncate(value: unknown): unknown {
   if (value === undefined) return undefined;
@@ -30,6 +31,19 @@ function truncate(value: unknown): unknown {
   }
   if (serialised.length <= MAX_RESULT_CHARS) return value;
   return `${serialised.slice(0, MAX_RESULT_CHARS)}… (${serialised.length} chars)`;
+}
+
+/** Per-value truncation, so a large `code` argument cannot dominate the row. */
+function truncateArgs(args: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(args)) {
+    if (typeof value === 'string' && value.length > MAX_ARG_CHARS) {
+      out[key] = `${value.slice(0, MAX_ARG_CHARS)}… (${value.length} chars)`;
+    } else {
+      out[key] = truncate(value);
+    }
+  }
+  return out;
 }
 
 export interface RecordInput {
@@ -46,7 +60,9 @@ export async function record(input: RecordInput): Promise<AuditEntry> {
     id: newId('audit'),
     ts: Date.now(),
     toolName: input.toolName,
-    args: input.args,
+    // Bounded like the result. propose_tool's args carry an entire tool's
+    // source, and this store keeps 500 rows.
+    args: truncateArgs(input.args),
     ok: input.ok,
     ...(input.result === undefined ? {} : { result: truncate(input.result) }),
     ...(input.error === undefined ? {} : { error: input.error }),

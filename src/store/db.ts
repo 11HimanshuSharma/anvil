@@ -53,19 +53,6 @@ export function db(): Promise<IDBPDatabase<AnvilDB>> {
   return handle;
 }
 
-/** Test/reset hook: wipes every store but keeps the schema. */
-export async function clearAll(): Promise<void> {
-  const database = await db();
-  const tx = database.transaction(['items', 'tools', 'proposals', 'audit'], 'readwrite');
-  await Promise.all([
-    tx.objectStore('items').clear(),
-    tx.objectStore('tools').clear(),
-    tx.objectStore('proposals').clear(),
-    tx.objectStore('audit').clear(),
-    tx.done,
-  ]);
-}
-
 export function newId(prefix: string): string {
   const random =
     typeof crypto.randomUUID === 'function'

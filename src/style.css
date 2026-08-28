@@ -305,3 +305,11 @@ button.ghost.danger:hover { color: var(--bad); border-color: #55292b; }
 .demo-status { margin: 0; font-size: 12px; color: var(--dim); min-height: 1em; }
 .drawer-queued { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12px; color: var(--accent); }
 .drawer h2:focus { outline: 1px solid var(--line); outline-offset: 4px; }
+
+/* retirement + usage in the surface panel */
+.surface-tool[data-retire="true"] .surface-name { color: var(--accent); }
+.surface-usage { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 0 10px; font: 11px/1 var(--mono); }
+.surface-used { color: #5b6371; }
+.surface-errors { color: var(--bad); }
+.chip.retire { padding: 4px 8px; font-size: 11px; color: var(--accent); border-color: #4a3a1d; }
+.chip.retire:hover:not(:disabled) { background: #191510; }
