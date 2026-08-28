@@ -1,0 +1,18 @@
+{
+  "name": "anvil",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "A workspace whose tools are written at runtime, by your agent, with your approval.",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3",
+    "vite": "^5.4.10"
+  }
+}
