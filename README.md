@@ -4,6 +4,7 @@
 
 Built for the OpenAI WebMCP Challenge. Every WebMCP demo so far answers *"what can a site let an agent do?"* with a fixed list the site's developer chose. Anvil makes that list open-ended and authored by the user: the moment your agent nails a fiddly task, you convert that one-off success into a permanently callable WebMCP tool — the agent writes the code, you approve the behaviour, and it registers live without a reload, a deploy, or an OAuth flow.
 
+- **Repo:** https://github.com/11HimanshuSharma/anvil
 - **Live URL:** _(pending first deploy)_
 - **Demo video:** _(pending)_
 - **Status:** Step 1 of the build plan — the live-registration go/no-go probe — is complete and green locally.
