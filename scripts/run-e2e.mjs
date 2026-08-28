@@ -126,6 +126,29 @@ await withPage(BASE, async ({ evaluate, run }) => {
   const editable = await evaluate("Boolean(document.querySelector('#drawer .drawer-description'))");
   check('description is editable', editable === true, 'human owns the prose');
 
+  // 3a. A second proposal arriving mid-review must not hijack the drawer.
+  await evaluate(
+    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({
+      name: 'queued_probe',
+      title: 'Queued probe',
+      description: 'A second proposal used to check that it queues instead of stealing the drawer.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      code: 'return 1;',
+      capabilities: [],
+      rationale: 'Queueing check.',
+      testCases: [],
+    })})`,
+  );
+  const stillShowing = await evaluate("document.querySelector('#drawer .drawer-name').textContent");
+  const queuedLine = await evaluate(
+    "document.querySelector('#drawer .drawer-queued')?.textContent ?? ''",
+  );
+  check(
+    'a new proposal queues instead of hijacking',
+    stillShowing === 'triage_queue' && queuedLine.includes('1 more proposal'),
+    `${stillShowing} / ${queuedLine}`,
+  );
+
   // 3b. An in-progress edit must survive a re-render. "Run again" writes to the
   // proposal, which re-renders the drawer; losing the wording there would be
   // the worst possible place for a data-loss bug.
@@ -149,8 +172,14 @@ await withPage(BASE, async ({ evaluate, run }) => {
     field.value = 'Applies my triage rules: archive stale unread items and strip tracking parameters from newsletter links.';
     [...document.querySelectorAll('#drawer button')].find(b => b.textContent.startsWith('Approve')).click();
   `);
+  // Approving reveals the queued proposal rather than closing on it.
+  await waitFor(evaluate, "document.querySelector('#drawer .drawer-name')?.textContent === 'queued_probe'", {
+    label: 'queued proposal is revealed after approval',
+  });
+  check('queued proposal revealed after approval', true, 'resolving one shows the next');
+  await run("[...document.querySelectorAll('#drawer button')].find(b => b.textContent === 'Reject').click();");
   await waitFor(evaluate, "document.getElementById('drawer').dataset.open === 'false'", {
-    label: 'drawer closes after approval',
+    label: 'drawer closes once the queue empties',
   });
 
   // 5. Registered live, in the same session, with no reload.

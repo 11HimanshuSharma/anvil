@@ -59,6 +59,13 @@ export function mountDrawer(target: HTMLElement, toolRegistry: ToolRegistry): vo
   });
 
   onProposalsChanged(({ kind, proposal }) => {
+    // A newly arrived proposal must NOT steal the drawer from one being
+    // reviewed: that would throw away a half-written description. It queues,
+    // and the "N more waiting" line says so.
+    if (current && current.id !== proposal.id) {
+      void refreshQueuedCount();
+      return;
+    }
     if (kind === 'created' && proposal.status === 'pending') void open(proposal.id);
     else if (current && current.id === proposal.id) void open(proposal.id);
   });
@@ -85,6 +92,16 @@ export async function open(proposalId: string): Promise<void> {
   // stealing it mid-edit would be worse than not managing focus at all.
   if (firstOpen) root.querySelector('h2')?.setAttribute('tabindex', '-1');
   if (firstOpen) (root.querySelector('h2') as HTMLElement | null)?.focus();
+}
+
+async function refreshQueuedCount(): Promise<void> {
+  const openId = current?.id;
+  if (!openId) return;
+  queued = (await pendingProposals()).filter((entry) => entry.id !== openId).length;
+  const line = root.querySelector('.drawer-queued');
+  const text = `${queued} more proposal${queued === 1 ? '' : 's'} waiting behind this one.`;
+  if (line) line.textContent = text;
+  else if (queued > 0) root.querySelector('.drawer-head')?.append(h('p', { class: 'drawer-queued', text }));
 }
 
 /** Proposals can queue up. Resolving one should reveal the next, not hide it. */

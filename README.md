@@ -139,7 +139,7 @@ The frame's only channel out is a `MessageChannel` port the harness keeps in a c
 
 ## Tests
 
-**64 assertions**, all driving a real headless Chrome over the DevTools protocol. They run in CI on every push.
+**66 assertions**, all driving a real headless Chrome over the DevTools protocol. They run in CI on every push.
 
 ```bash
 npm test
@@ -147,7 +147,7 @@ npm test
 
 - **`npm run test:sandbox`** — 21 containment assertions, one per claim in the table above: opaque-origin storage denial, no parent DOM, capability shape *and* parent-side enforcement, watchdog kill and recovery, result cap, host-call cap, network allowlist including a successful fetch. Open [`/sandbox-tests.html`](sandbox-tests.html) to watch it run.
 - **`npm run test:fallback`** — the same 21 against the reduced-isolation worker, so the degraded path is not a code path nobody executes.
-- **`npm run test:e2e`** — 22 assertions across the whole loop: the cold-open demo, propose → dry-run → the drawer's real UI → an in-progress description edit surviving a re-render → a real click on Approve → live registration with no reload → the agent calling the tool → idempotency → duplicate-name refusal → Escape-to-dismiss → survives a reload.
+- **`npm run test:e2e`** — 24 assertions across the whole loop: the cold-open demo, propose → dry-run → the drawer's real UI → an in-progress description edit surviving a re-render → a second proposal queueing instead of hijacking the drawer → a real click on Approve → live registration with no reload → the agent calling the tool → idempotency → duplicate-name refusal → Escape-to-dismiss → survives a reload.
 
 These caught real bugs that would otherwise have died on camera:
 
