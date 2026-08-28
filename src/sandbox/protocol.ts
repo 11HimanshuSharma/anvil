@@ -113,3 +113,11 @@ export const EXECUTOR_URL = configuredOrigin
   : '/sandbox/executor.html';
 
 export const EXECUTOR_IS_CROSS_ORIGIN = Boolean(configuredOrigin);
+
+/**
+ * The reduced-isolation fallback: a same-origin worker, used only when the
+ * browser refuses to run scripts in a src-loaded sandboxed iframe, and only
+ * with the user's explicit consent. Served from /sandbox/ so it inherits that
+ * path's CSP, which is the only place 'unsafe-eval' is allowed.
+ */
+export const WORKER_URL = '/sandbox/worker.js';

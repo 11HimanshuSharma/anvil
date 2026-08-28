@@ -44,6 +44,8 @@ export async function withPage(url, fn, { port = 9333 } = {}) {
       '--disable-gpu',
       '--no-first-run',
       '--no-default-browser-check',
+      // CI containers run as root, where Chrome's own sandbox refuses to start.
+      ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profileDir}`,
       url,
@@ -104,6 +106,7 @@ export async function withPage(url, fn, { port = 9333 } = {}) {
 
 async function waitForTarget(port, url) {
   const wanted = new URL(url).pathname;
+  // Match on pathname only: Chrome may normalise the query string.
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
     try {

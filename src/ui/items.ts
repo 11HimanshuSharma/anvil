@@ -4,6 +4,7 @@ import {
   listItems,
   onItemsChanged,
   removeItem,
+  reseed,
   saveItem,
 } from '../store/items';
 import { ITEM_STATUSES, type Item, type ItemStatus } from '../store/types';
@@ -120,6 +121,22 @@ function renderToolbar(
     },
   });
 
+  const resetButton = h(
+    'button',
+    {
+      class: 'chip',
+      title: 'Restore the 30 seeded items',
+      on: {
+        click: () => {
+          if (window.confirm('Reset the workspace to its 30 seeded items? Your tools are kept.')) {
+            void reseed();
+          }
+        },
+      },
+    },
+    'reset items',
+  );
+
   const addButton = h(
     'button',
     {
@@ -138,7 +155,7 @@ function renderToolbar(
     'div',
     { class: 'toolbar' },
     h('div', { class: 'chips-row' }, ...statusChips),
-    h('div', { class: 'chips-row' }, tagSelect, search, addButton),
+    h('div', { class: 'chips-row' }, tagSelect, search, resetButton, addButton),
   );
 }
 

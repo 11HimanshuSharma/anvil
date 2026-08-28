@@ -12,8 +12,10 @@
     "preview": "vite preview",
     "test:sandbox": "node scripts/run-sandbox-tests.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
-    "test": "node scripts/run-sandbox-tests.mjs && node scripts/run-e2e.mjs",
-    "shots": "node scripts/shot.mjs"
+    "test": "npm run test:sandbox && npm run test:fallback && npm run test:e2e",
+    "shots": "node scripts/shot.mjs",
+    "test:fallback": "node scripts/run-sandbox-tests.mjs \"http://localhost:5173/sandbox-tests.html?isolation=simulate-blocked\"",
+    "measure": "node scripts/measure-variance.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",

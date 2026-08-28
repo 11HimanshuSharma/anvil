@@ -1,5 +1,6 @@
 /** Domain types for the Anvil workspace. Build plan §3.3. */
 
+import type { MutationSummary } from '../sandbox/diff';
 import type { JsonSchema } from '../webmcp/types';
 
 export const ITEM_STATUSES = ['unread', 'reading', 'done', 'archived'] as const;
@@ -68,6 +69,9 @@ export interface DryRunResult {
   ok: boolean;
   result?: unknown;
   error?: string;
+  /** What the tool would have changed. Rendered as the drawer's before/after diff. */
+  mutations: MutationSummary[];
+  logs: string[];
   ms: number;
 }
 

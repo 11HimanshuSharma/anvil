@@ -1,4 +1,4 @@
-import type { Mutation } from '../sandbox/host';
+import { summariseMutations, type MutationSummary } from '../sandbox/diff';
 import { sandbox } from '../sandbox/host';
 import { getProposal, onProposalsChanged, pendingProposals, updateProposal } from '../store/proposals';
 import { putTool } from '../store/tools';
@@ -31,9 +31,32 @@ let registry: ToolRegistry;
 let root: HTMLElement;
 let current: Proposal | null = null;
 
+/**
+ * The description the human is part-way through writing.
+ *
+ * The drawer re-renders whenever its proposal changes - which includes the
+ * user's own "run again" - so the in-progress edit has to survive that. Losing
+ * it silently would be the worst possible place for a data-loss bug: owning the
+ * wording is the whole security argument.
+ */
+let editedDescription: string | null = null;
+let editedFor: string | null = null;
+/** How many other proposals are still waiting behind this one. */
+let queued = 0;
+
 export function mountDrawer(target: HTMLElement, toolRegistry: ToolRegistry): void {
   root = target;
   registry = toolRegistry;
+  root.setAttribute('role', 'dialog');
+  root.setAttribute('aria-modal', 'false');
+  root.setAttribute('aria-label', 'Review a proposed tool');
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && current) {
+      event.preventDefault();
+      close();
+    }
+  });
 
   onProposalsChanged(({ kind, proposal }) => {
     if (kind === 'created' && proposal.status === 'pending') void open(proposal.id);
@@ -50,16 +73,36 @@ export function mountDrawer(target: HTMLElement, toolRegistry: ToolRegistry): vo
 export async function open(proposalId: string): Promise<void> {
   const proposal = await getProposal(proposalId);
   if (!proposal || proposal.status !== 'pending') {
-    close();
+    await openNextPending();
     return;
   }
+  const firstOpen = current?.id !== proposal.id;
   current = proposal;
+  queued = (await pendingProposals()).filter((entry) => entry.id !== proposal.id).length;
   render(proposal);
   root.dataset['open'] = 'true';
+  // Move focus in only when the drawer first appears, never on a re-render:
+  // stealing it mid-edit would be worse than not managing focus at all.
+  if (firstOpen) root.querySelector('h2')?.setAttribute('tabindex', '-1');
+  if (firstOpen) (root.querySelector('h2') as HTMLElement | null)?.focus();
+}
+
+/** Proposals can queue up. Resolving one should reveal the next, not hide it. */
+async function openNextPending(): Promise<void> {
+  const pending = await pendingProposals();
+  const next = pending.find((entry) => entry.id !== current?.id);
+  if (next) {
+    current = null;
+    await open(next.id);
+    return;
+  }
+  close();
 }
 
 export function close(): void {
   current = null;
+  editedDescription = null;
+  editedFor = null;
   root.dataset['open'] = 'false';
   mount(root);
 }
@@ -68,10 +111,25 @@ export function close(): void {
 
 function render(proposal: Proposal): void {
   const draft = proposal.draft;
+  if (editedFor !== proposal.id) {
+    editedDescription = null;
+    editedFor = proposal.id;
+  }
+
+  const active = document.activeElement;
+  const hadFocus = active instanceof HTMLElement && active.classList.contains('drawer-description');
+  const caret = hadFocus ? (active as HTMLTextAreaElement).selectionStart : null;
+
   const descriptionField = h('textarea', {
     class: 'drawer-description',
     attrs: { rows: '5', 'aria-label': 'Tool description' },
-    props: { value: draft.description },
+    props: { value: editedDescription ?? draft.description },
+    on: {
+      input: (_event, field) => {
+        editedDescription = field.value;
+        editedFor = proposal.id;
+      },
+    },
   });
 
   mount(
@@ -89,6 +147,11 @@ function render(proposal: Proposal): void {
       renderActions(proposal, descriptionField),
     ),
   );
+
+  if (hadFocus) {
+    descriptionField.focus();
+    if (caret !== null) descriptionField.setSelectionRange(caret, caret);
+  }
 }
 
 function renderHeader(proposal: Proposal): HTMLElement {
@@ -101,8 +164,18 @@ function renderHeader(proposal: Proposal): HTMLElement {
       h('h2', { class: 'drawer-title', text: proposal.draft.title || proposal.draft.name }),
       h('code', { class: 'drawer-name', text: proposal.draft.name }),
     ),
-    h('button', { class: 'icon', title: 'dismiss', on: { click: () => close() } }, '×'),
+    h(
+      'button',
+      { class: 'icon', title: 'dismiss (Esc)', attrs: { 'aria-label': 'Dismiss' }, on: { click: () => close() } },
+      '×',
+    ),
     h('p', { class: 'drawer-rationale', text: proposal.rationale }),
+    queued > 0
+      ? h('p', {
+          class: 'drawer-queued',
+          text: `${queued} more proposal${queued === 1 ? '' : 's'} waiting behind this one.`,
+        })
+      : null,
   );
 }
 
@@ -167,8 +240,16 @@ function renderDryRuns(proposal: Proposal): HTMLElement {
             { class: 'dryrun', data: { ok: String(run.ok) } },
             h('div', { class: 'dryrun-head' }, h('code', { text: `call ${index + 1}: ${JSON.stringify(run.args)}` }), h('span', { class: 'dryrun-ms', text: `${run.ms}ms` })),
             run.ok
-              ? h('pre', { class: 'dryrun-out', text: preview(run.result) })
+              ? renderMutationDiff(run.mutations)
               : h('p', { class: 'dryrun-err', text: run.error ?? 'failed' }),
+            run.ok
+              ? h(
+                  'details',
+                  { class: 'dryrun-raw' },
+                  h('summary', { text: 'raw return value' }),
+                  h('pre', { class: 'dryrun-out', text: preview(run.result) }),
+                )
+              : null,
           ),
         );
 
@@ -222,35 +303,73 @@ async function rerun(proposal: Proposal): Promise<void> {
         args,
         ok: outcome.ok,
         ...(outcome.ok ? { result: outcome.value } : { error: outcome.error ?? 'failed' }),
+        mutations: summariseMutations(outcome.mutations),
+        logs: outcome.logs,
         ms: outcome.ms,
       },
     ].slice(-10),
   });
-  if (outcome.mutations.length > 0) renderMutations(outcome.mutations);
 }
 
-function renderMutations(mutations: Mutation[]): void {
-  const target = root.querySelector('.drawer-mutations');
-  if (!target) return;
-  mount(
-    target as HTMLElement,
-    ...mutations.slice(0, 5).map((mutation) => h('div', { class: 'diff', text: describeMutation(mutation) })),
+/** The before/after view. This is what someone is actually approving. */
+function renderMutationDiff(mutations: readonly MutationSummary[]): HTMLElement {
+  if (mutations.length === 0) {
+    return h('p', { class: 'diff-none', text: 'Changed nothing. Read-only for these arguments.' });
+  }
+
+  const shown = mutations.slice(0, 6);
+  return h(
+    'div',
+    { class: 'diff-list' },
+    h('p', {
+      class: 'diff-count',
+      text: `Would change ${mutations.length} item${mutations.length === 1 ? '' : 's'}:`,
+    }),
+    ...shown.map((mutation) =>
+      h(
+        'div',
+        { class: 'diff-row', data: { kind: mutation.kind } },
+        h('span', { class: 'diff-mark', text: MARK[mutation.kind] }),
+        h(
+          'span',
+          { class: 'diff-body' },
+          h('span', { class: 'diff-title', text: mutation.title }),
+          ...mutation.changes.map((change) =>
+            h(
+              'span',
+              { class: 'diff-change' },
+              h('span', { class: 'diff-field', text: change.field }),
+              h('span', { class: 'diff-before', text: shorten(change.before) || '(empty)' }),
+              ' → ',
+              h('span', { class: 'diff-after', text: shorten(change.after) || '(empty)' }),
+            ),
+          ),
+        ),
+      ),
+    ),
+    mutations.length > shown.length
+      ? h('p', { class: 'diff-count', text: `and ${mutations.length - shown.length} more` })
+      : null,
   );
 }
 
-function describeMutation(mutation: Mutation): string {
-  if (mutation.kind === 'create') return `+ create "${mutation.after.title}"`;
-  if (mutation.kind === 'remove') return `- delete "${mutation.before.title}"`;
-  const changes: string[] = [];
-  const { before, after } = mutation;
-  if (before.title !== after.title) changes.push(`title "${before.title}" → "${after.title}"`);
-  if (before.url !== after.url) changes.push(`url ${prettyUrl(before.url)} → ${prettyUrl(after.url)}`);
-  if (before.status !== after.status) changes.push(`status ${before.status} → ${after.status}`);
-  if (before.source !== after.source) changes.push(`source "${before.source}" → "${after.source}"`);
-  if (before.tags.join(',') !== after.tags.join(',')) {
-    changes.push(`tags [${before.tags.join(', ')}] → [${after.tags.join(', ')}]`);
-  }
-  return `~ ${after.title || after.id}: ${changes.join('; ') || 'no visible change'}`;
+const MARK: Readonly<Record<MutationSummary['kind'], string>> = Object.freeze({
+  create: '+',
+  update: '~',
+  remove: '-',
+});
+
+/**
+ * Elides the MIDDLE, not the tail.
+ *
+ * Truncating the tail made the diff useless for the most common change there
+ * is - stripping a query string - because both halves ended in the same
+ * ellipsis and the only difference was the part that got cut.
+ */
+function shorten(value: string): string {
+  const cleaned = value.startsWith('http') ? prettyUrl(value) : value;
+  if (cleaned.length <= 52) return cleaned;
+  return `${cleaned.slice(0, 24)}…${cleaned.slice(-26)}`;
 }
 
 function preview(value: unknown): string {
@@ -277,7 +396,6 @@ function renderDescription(draft: ToolDef, field: HTMLTextAreaElement): HTMLElem
       class: 'drawer-note',
       text: `Costs about ${contextCost(draft)} tokens of your agent's context, every turn.`,
     }),
-    h('div', { class: 'drawer-mutations' }),
   );
 }
 
@@ -320,7 +438,7 @@ function renderActions(proposal: Proposal, field: HTMLTextAreaElement): HTMLElem
           }
           button.disabled = true;
           void approveProposal(proposal, accepted)
-            .then(() => close())
+            .then(() => openNextPending())
             .catch((error: unknown) => {
               button.disabled = false;
               status.textContent = error instanceof Error ? error.message : String(error);
@@ -337,7 +455,7 @@ function renderActions(proposal: Proposal, field: HTMLTextAreaElement): HTMLElem
       class: 'ghost danger',
       on: {
         click: () => {
-          void updateProposal({ ...proposal, status: 'rejected' }).then(() => close());
+          void updateProposal({ ...proposal, status: 'rejected' }).then(() => openNextPending());
         },
       },
     },

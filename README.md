@@ -1,5 +1,7 @@
 # Anvil
 
+[![CI](https://github.com/11HimanshuSharma/anvil/actions/workflows/ci.yml/badge.svg)](https://github.com/11HimanshuSharma/anvil/actions/workflows/ci.yml)
+
 **A workspace whose tools are written at runtime, by your agent, with your approval.**
 
 - **Repo:** https://github.com/11HimanshuSharma/anvil
@@ -106,6 +108,27 @@ This app takes the spec's tool-poisoning attack and makes it *persistent and use
 | Over-parameterised privacy leak | Schemas are user-visible; the scanner flags fields unrelated to a reading queue |
 | Context blowout | Results are capped at 64 kB before they reach the model, and host calls at 200 per execution |
 
+### Two isolation levels, chosen at runtime
+
+Some embedded browsers refuse to run scripts in a `src`-loaded `sandbox="allow-scripts"` iframe at all. Failing silently there would break every custom tool, and silently downgrading the boundary would be worse. So Anvil detects it, says what is lost, and offers the weaker option behind an explicit click.
+
+| | `isolated` (default) | `reduced` (consent-gated fallback) |
+| --- | --- | --- |
+| Executor | iframe at an **opaque origin** | same-origin Web Worker |
+| Workspace database | unreachable | reachable if a global is recovered |
+| Deleted globals | defence in depth | the *only* barrier |
+| Kill switch | remove the frame from the DOM | `worker.terminate()` |
+| Capability enforcement | parent-side, per execution | parent-side, per execution |
+
+A test proves the difference instead of asserting it. It recovers a deleted global through the prototype chain — `Reflect.get(proto, 'indexedDB', globalThis)` — and then tries to use it:
+
+```
+isolated:  not recoverable            (opaque origin holds)
+reduced:   RECOVERED AND USABLE       (reduced isolation, as advertised)
+```
+
+That is exactly why the fallback needs a click. Run the whole suite against it with `npm run test:fallback`.
+
 **What the sandbox actually guarantees.** User code runs in an iframe with `sandbox="allow-scripts"` and **no** `allow-same-origin`, which gives it an **opaque origin**. That is the boundary: no access to our IndexedDB, localStorage or cookies, no parent DOM, and any fetch it managed would be credential-less and cross-origin. Deleting `fetch`, `indexedDB` and friends inside the frame is defence in depth, *not* the boundary — a determined script can often recover a global; it cannot recover an origin.
 
 Compare a Web Worker, the obvious alternative: a worker is **same-origin**, so it can reopen IndexedDB and issue credentialed fetches. Deleting globals there would be the only thing standing between user code and your data.
@@ -116,18 +139,36 @@ The frame's only channel out is a `MessageChannel` port the harness keeps in a c
 
 ## Tests
 
-Both suites drive a real headless Chrome over the DevTools protocol.
+**64 assertions**, all driving a real headless Chrome over the DevTools protocol. They run in CI on every push.
 
 ```bash
 npm test
 ```
 
-- **`npm run test:sandbox`** — 19 containment assertions, one per claim in the table above: opaque-origin storage denial, no parent DOM, capability shape and parent-side enforcement, watchdog kill *and recovery*, result cap, host-call cap, network allowlist. Open [`/sandbox-tests.html`](sandbox-tests.html) to watch it run.
-- **`npm run test:e2e`** — 16 assertions across the whole loop: propose → dry-run → the drawer's real UI → a real click on Approve → live registration with no reload → the agent calling the new tool → idempotency → survives a reload.
+- **`npm run test:sandbox`** — 21 containment assertions, one per claim in the table above: opaque-origin storage denial, no parent DOM, capability shape *and* parent-side enforcement, watchdog kill and recovery, result cap, host-call cap, network allowlist including a successful fetch. Open [`/sandbox-tests.html`](sandbox-tests.html) to watch it run.
+- **`npm run test:fallback`** — the same 21 against the reduced-isolation worker, so the degraded path is not a code path nobody executes.
+- **`npm run test:e2e`** — 22 assertions across the whole loop: the cold-open demo, propose → dry-run → the drawer's real UI → an in-progress description edit surviving a re-render → a real click on Approve → live registration with no reload → the agent calling the tool → idempotency → duplicate-name refusal → Escape-to-dismiss → survives a reload.
 
-The e2e suite caught two bugs that would otherwise have died on camera: `new Function` builds a *synchronous* function, so `await` in tool code was a syntax error even though every host call returns a promise; and after the watchdog killed a `while(true)` frame, its replacement lost the race to load and the sandbox never recovered.
+These caught real bugs that would otherwise have died on camera:
 
-> **Note on preview panes:** a `src`-loaded `sandbox="allow-scripts"` iframe runs scripts in real Chrome, but not in every embedded preview pane. If every containment case fails at boot, that is the harness.
+- `new Function` builds a **synchronous** function, so `await` in tool code was a syntax error — while every host call returns a promise. Every agent-written tool would have failed.
+- After the watchdog killed a `while(true)` frame, its replacement lost the race to load and the sandbox never recovered.
+- The review drawer rebuilt its textarea on every re-render, silently discarding an in-progress description edit — in the one place where losing the wording matters most.
+
+## Does it actually stay the same?
+
+`npm run measure` reseeds the workspace to an identical starting state, runs the registered tool, and compares exact output across trials:
+
+```
+WITH THE TOOL — 10 trials, workspace reseeded before each
+  identical results   10/10
+  distinct outputs    1
+  mean wall clock     120ms
+```
+
+The other arm — the same procedure asked of an agent in prose, in 10 fresh chats — needs a live agent and is not automatable. The script prints the exact protocol for running it by hand. Reporting only the arm that flatters the project would make the number worthless.
+
+> **Note on preview panes:** a `src`-loaded `sandbox="allow-scripts"` iframe runs scripts in real Chrome, but not in every embedded preview pane. That is what the reduced-isolation fallback exists for.
 
 ## Layout
 
@@ -163,11 +204,16 @@ Headers matter more than usual: WebMCP needs a secure context and an origin-isol
 curl -sI https://<your-url> | grep -i -E 'origin-agent|permissions-policy|content-security'
 ```
 
-## Not done yet
+## Known limitations
 
-- Toolpack export/import
-- Retirement chips are computed but not yet surfaced in the UI
-- The variance measurement (10 runs with the tool vs 10 without) is not yet recorded
+- **The `net` capability is bounded by the deployment's CSP.** The proxy fetch runs on the app's own origin, so `connect-src` is an outer bound that a per-tool allowlist cannot widen: a tool may request `api.example.com`, but if the deployed `connect-src` does not list it, the browser blocks the request before it leaves. The proxy returns an error saying exactly that rather than a bare "Failed to fetch". Read/write tools are unaffected.
+- One executor is reused across executions, so tools can pollute each other's globals. A correctness wart, not a capability leak — capabilities are enforced per execution, parent-side.
+- Toolpack export/import is not built. Retirement candidates are computed but not yet surfaced as chips.
+- `VITE_SANDBOX_ORIGIN` points the executor at a separate origin for defence in depth; using it also requires adding that origin to `frame-src` in [`vercel.json`](vercel.json).
+
+## Submission
+
+[`SUBMISSION.md`](SUBMISSION.md) holds the Devpost text, the video shot list, and the pre-submit checklist.
 
 ## License
 

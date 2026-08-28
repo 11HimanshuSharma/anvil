@@ -184,6 +184,18 @@ const CASES: readonly Case[] = [
       ),
   },
   {
+    name: 'net-allowed-succeeds',
+    claim: 'an allowlisted host is actually fetched and returned as JSON',
+    run: async () => {
+      const origin = new URL(location.href);
+      const outcome = await exec(
+        `const r = await host.fetchJson(${JSON.stringify(`${origin.origin}/sandbox/fixture.json`)}); return r.json.ok;`,
+        { capabilities: ['net'], networkDomains: [origin.hostname] },
+      );
+      return { pass: outcome.ok && outcome.value === true, detail: JSON.stringify(outcome.value ?? outcome.error) };
+    },
+  },
+  {
     name: 'watchdog-kills-infinite-loop',
     claim: 'a runaway loop is stopped and the frame is destroyed',
     run: async () => {
@@ -238,6 +250,41 @@ const CASES: readonly Case[] = [
     },
   },
   {
+    /**
+     * Deleting a global is not a boundary, and this proves it rather than
+     * asserting it. `Reflect.get` with the global as receiver walks straight
+     * past a shadowed own-property back to the prototype accessor.
+     *
+     * In the isolated frame that recovery buys nothing: the origin is opaque,
+     * so opening a database still fails. In the worker it does buy something,
+     * which is precisely why reduced isolation is consent-gated and labelled.
+     */
+    name: 'prototype-escape-is-mode-dependent',
+    claim: 'recovering a deleted global defeats the worker, but not the opaque origin',
+    run: async () => {
+      const outcome = await exec(`
+        const proto = Object.getPrototypeOf(globalThis);
+        let recovered = null;
+        try { recovered = Reflect.get(proto, 'indexedDB', globalThis); } catch (e) { return 'getter threw: ' + e.name; }
+        if (!recovered) return 'not recoverable';
+        try {
+          recovered.open('anvil');
+          return 'RECOVERED AND USABLE';
+        } catch (e) {
+          return 'recovered but unusable: ' + e.name;
+        }
+      `);
+      const value = String(outcome.value ?? outcome.error);
+      const isolated = sandbox.status.mode === 'isolated';
+      return {
+        pass: isolated ? !value.startsWith('RECOVERED AND USABLE') : true,
+        detail: isolated
+          ? `${value} (opaque origin holds)`
+          : `${value} - reduced isolation, as advertised`,
+      };
+    },
+  },
+  {
     name: 'syntax-error-is-reported',
     claim: 'broken code returns a readable error the agent can fix',
     run: async () => {
@@ -253,6 +300,19 @@ async function main(): Promise<void> {
   const target = document.getElementById('results');
   if (!target) throw new Error('missing #results');
   await ensureSeeded();
+
+  // With ?isolation=simulate-blocked the whole suite runs again against the
+  // same-origin worker fallback, so the degraded path has real coverage rather
+  // than being a code path nobody ever executes.
+  const simulating = new URLSearchParams(location.search).get('isolation') === 'simulate-blocked';
+  if (simulating) {
+    sandbox.enableReducedIsolation();
+    await sandbox.warm();
+    const banner = document.getElementById('mode-note');
+    if (banner) {
+      banner.textContent = `isolation: ${sandbox.status.mode ?? 'unavailable'} (fallback path)`;
+    }
+  }
 
   const rows: HTMLElement[] = [];
   let passed = 0;
@@ -281,6 +341,9 @@ async function main(): Promise<void> {
     );
     mount(target, ...rows);
   }
+
+  const modeNote = document.getElementById('mode-note');
+  if (modeNote && !simulating) modeNote.textContent = `isolation: ${sandbox.status.mode ?? 'unavailable'}`;
 
   const summary = `SUMMARY:: ${passed}/${CASES.length} passed`;
   const node = document.getElementById('summary');

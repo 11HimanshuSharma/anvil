@@ -63,14 +63,29 @@ function check(name, pass, detail) {
 
 await withPage(BASE, async ({ evaluate, run }) => {
   await waitFor(evaluate, "Boolean(window.anvil?.mc)", { label: 'app boot' });
+  // Registration is sequential, so wait for the LAST tool rather than any one
+  // of them: snapshotting mid-loop was a flaky test, not a flaky app.
   await waitFor(
     evaluate,
-    "(await window.anvil.mc.getTools()).some(t => t.name === 'propose_tool')",
-    { label: 'meta tools registered' },
+    "(await window.anvil.mc.getTools()).some(t => t.name === 'dry_run_draft')",
+    { label: 'all built-in and meta tools registered' },
   );
 
   const before = await evaluate('(await window.anvil.mc.getTools()).length');
   check('builtins + meta registered', before === 8, `${before} tools (expected 8)`);
+
+  // 0. The cold-open path: a visitor with no agent attached can still see the
+  // loop, because the demo button goes through the real propose_tool.
+  await run("document.querySelector('#demo .demo-button').click();");
+  await waitFor(evaluate, "document.getElementById('drawer').dataset.open === 'true'", {
+    label: 'demo proposal opens the drawer',
+  });
+  const demoName = await evaluate("document.querySelector('#drawer .drawer-name').textContent");
+  check('cold-open demo works without an agent', demoName === 'triage_queue', demoName);
+  await run("[...document.querySelectorAll('#drawer button')].find(b => b.textContent === 'Reject').click();");
+  await waitFor(evaluate, "document.getElementById('drawer').dataset.open === 'false'", {
+    label: 'rejected proposal closes',
+  });
 
   // 1. The agent proposes.
   const proposal = await evaluate(
@@ -99,10 +114,34 @@ await withPage(BASE, async ({ evaluate, run }) => {
   });
   const caps = await evaluate("[...document.querySelectorAll('#drawer .cap')].map(e => e.textContent).join(' | ')");
   check('capability chips shown', caps.includes('reads') && caps.includes('writes'), caps);
-  const hasDiff = await evaluate("document.querySelectorAll('#drawer .dryrun').length > 0");
-  check('dry-run output shown', hasDiff === true, 'drawer renders what it did');
+  const diffRows = await evaluate("document.querySelectorAll('#drawer .diff-row').length");
+  const diffText = await evaluate(
+    "[...document.querySelectorAll('#drawer .diff-change')].slice(0,1).map(e => e.textContent).join('')",
+  );
+  check(
+    'before/after diff rendered',
+    diffRows > 0 && diffText.includes('→'),
+    `${diffRows} changed rows, e.g. ${diffText.slice(0, 60)}`,
+  );
   const editable = await evaluate("Boolean(document.querySelector('#drawer .drawer-description'))");
   check('description is editable', editable === true, 'human owns the prose');
+
+  // 3b. An in-progress edit must survive a re-render. "Run again" writes to the
+  // proposal, which re-renders the drawer; losing the wording there would be
+  // the worst possible place for a data-loss bug.
+  await run(`
+    const field = document.querySelector('#drawer .drawer-description');
+    field.value = 'EDIT-SURVIVES-RERENDER';
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    [...document.querySelectorAll('#drawer button')].find(b => b.textContent === 'run again').click();
+  `);
+  await waitFor(
+    evaluate,
+    "document.querySelectorAll('#drawer .dryrun').length >= 2",
+    { label: 'second dry run lands' },
+  );
+  const preserved = await evaluate("document.querySelector('#drawer .drawer-description').value");
+  check('edits survive a re-render', preserved === 'EDIT-SURVIVES-RERENDER', preserved.slice(0, 40));
 
   // 4. The human edits the description and approves.
   await run(`
@@ -160,6 +199,49 @@ await withPage(BASE, async ({ evaluate, run }) => {
   // 7. It is in the audit log, and it survives a reload.
   const audited = await evaluate("document.body.innerText.includes('triage_queue')");
   check('appears in the audit log', audited === true, 'every invocation is recorded');
+
+  // 8. Proposing a name that now exists is refused, and Escape closes a drawer.
+  const duplicate = await evaluate(
+    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({ ...DRAFT, testCases: [] })})`,
+  );
+  check(
+    'duplicate name refused',
+    duplicate?.ok === false && duplicate?.error === 'name_taken',
+    String(duplicate?.error ?? duplicate?.ok),
+  );
+
+  const readOnlyProposal = await evaluate(
+    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({
+      name: 'count_by_source',
+      title: 'Count items by source',
+      description: 'Counts saved links grouped by their source, so I can see where my queue comes from.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      code: [
+        'const items = await host.items.list({ limit: 200 });',
+        'const counts = {};',
+        'for (const item of items) counts[item.source] = (counts[item.source] ?? 0) + 1;',
+        'return counts;',
+      ].join('\n'),
+      capabilities: ['read:items'],
+      rationale: 'I ask for this breakdown constantly.',
+      testCases: [{ args: {}, expectation: 'a map of source to count' }],
+    })})`,
+  );
+  check(
+    'second proposal accepted',
+    readOnlyProposal?.ok === true,
+    String(readOnlyProposal?.status ?? readOnlyProposal?.error),
+  );
+  await waitFor(evaluate, "document.getElementById('drawer').dataset.open === 'true'", {
+    label: 'drawer reopens',
+  });
+  const readOnlyDiff = await evaluate(
+    "document.querySelectorAll('#drawer .diff-none').length > 0",
+  );
+  check('read-only tool shows it changed nothing', readOnlyDiff === true, 'diff says read-only');
+  await run("document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));");
+  const closedByEscape = await evaluate("document.getElementById('drawer').dataset.open === 'false'");
+  check('Escape closes the drawer', closedByEscape === true, 'keyboard dismissal works');
 
   await evaluate('location.reload()');
   await waitFor(evaluate, "Boolean(window.anvil?.mc)", { label: 'reboot' });

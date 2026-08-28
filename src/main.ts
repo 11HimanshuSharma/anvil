@@ -1,7 +1,7 @@
 import './style.css';
 import { sandbox } from './sandbox/host';
 import { record } from './store/audit';
-import { ensureSeeded } from './store/items';
+import { ensureSeeded, reseed } from './store/items';
 import { listTools } from './store/tools';
 import { builtinTools } from './tools/builtin';
 import { toModelContextTool } from './tools/custom';
@@ -10,7 +10,9 @@ import { binding, mc } from './webmcp/context';
 import { ToolRegistry } from './webmcp/registry';
 import type { ModelContextTool } from './webmcp/types';
 import { mountAuditLog } from './ui/auditLog';
+import { mountDemoButton } from './ui/demo';
 import { mountDrawer } from './ui/drawer';
+import { mountIsolationBanner } from './ui/isolationBanner';
 import { el, h, mount } from './ui/dom';
 import { mountItemsView } from './ui/items';
 import { mountSurfacePanel } from './ui/surfacePanel';
@@ -105,6 +107,8 @@ async function boot(): Promise<void> {
   mountSurfacePanel(el('surface'));
   mountAuditLog(el('log'));
   renderPrompts(el('prompts'));
+  mountIsolationBanner(el('isolation'));
+  mountDemoButton(el('demo'));
 
   for (const tool of [...builtinTools, ...metaTools]) {
     try {
@@ -138,4 +142,4 @@ async function boot(): Promise<void> {
 void boot();
 
 // Exposed for DevTools and the Model Context Tool Inspector.
-Object.assign(window, { anvil: { mc, binding, registry, sandbox } });
+Object.assign(window, { anvil: { mc, binding, registry, sandbox, reseed } });

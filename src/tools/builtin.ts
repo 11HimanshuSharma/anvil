@@ -7,7 +7,8 @@ import {
   searchItems,
   type SaveItemInput,
 } from '../store/items';
-import { isItemStatus, type Item, type ItemStatus } from '../store/types';
+import { toToolItem, toToolItemSummary } from '../store/shape';
+import { isItemStatus, type ItemStatus } from '../store/types';
 import type { ModelContextTool } from '../webmcp/types';
 
 /**
@@ -72,27 +73,8 @@ function opt<K extends string, V>(key: K, value: V | undefined): Partial<Record<
 
 /* -------------------------------------------------------------- shaping ---- */
 
-/** Trim notes in list responses: full records land in the model's context. */
-function summarise(item: Item): Record<string, unknown> {
-  return {
-    id: item.id,
-    title: item.title,
-    url: item.url,
-    source: item.source,
-    tags: item.tags,
-    status: item.status,
-    addedAt: new Date(item.addedAt).toISOString(),
-    hasNotes: item.notes.trim() !== '',
-  };
-}
-
-function full(item: Item): Record<string, unknown> {
-  return {
-    ...summarise(item),
-    notes: item.notes,
-    updatedAt: new Date(item.updatedAt).toISOString(),
-  };
-}
+const summarise = toToolItemSummary;
+const full = toToolItem;
 
 export interface ToolFailure {
   ok: false;

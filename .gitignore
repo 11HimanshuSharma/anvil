@@ -3,3 +3,7 @@ dist
 .vercel
 .DS_Store
 *.local
+
+# Strategy notes and local editor config: kept on disk, out of the public repo
+anvil-build-plan_*.md
+.claude/

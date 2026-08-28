@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck and build
+        run: npm run build
+
+      - name: Serve the built app
+        run: npx vite preview --port 5173 --strictPort &
+
+      - name: Wait for the server
+        run: npx --yes wait-on http://localhost:5173/ --timeout 60000
+
+      # The sandbox suites need a real browser: a src-loaded
+      # sandbox="allow-scripts" iframe is the thing under test.
+      - name: Sandbox containment (isolated)
+        run: npm run test:sandbox
+
+      - name: Sandbox containment (reduced-isolation fallback)
+        run: npm run test:fallback
+
+      - name: End-to-end propose/approve/register loop
+        run: npm run test:e2e

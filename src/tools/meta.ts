@@ -1,3 +1,4 @@
+import { summariseMutations } from '../sandbox/diff';
 import { sandbox } from '../sandbox/host';
 import { newId } from '../store/db';
 import { createProposal, getProposal, updateProposal } from '../store/proposals';
@@ -226,7 +227,13 @@ const proposeTool: ModelContextTool = {
       status: 'pending_review',
       registered: false,
       callable: false,
-      dryRuns: dryRuns.map((run) => ({ args: run.args, ok: run.ok, error: run.error, ms: run.ms })),
+      dryRuns: dryRuns.map((run) => ({
+        args: run.args,
+        ok: run.ok,
+        error: run.error,
+        wouldChange: run.mutations.length,
+        ms: run.ms,
+      })),
       overlapsWith: proposal.overlapsWith,
       scanFlags: proposal.scanFlags,
       message:
@@ -266,6 +273,8 @@ async function runDraft(draft: ToolDef, args: Record<string, unknown>): Promise<
     args,
     ok: outcome.ok,
     ...(outcome.ok ? { result: outcome.value } : { error: outcome.error ?? 'failed' }),
+    mutations: summariseMutations(outcome.mutations),
+    logs: outcome.logs,
     ms: outcome.ms,
   };
 }
@@ -286,7 +295,9 @@ const dryRunDraftTool: ModelContextTool = {
     required: ['proposalId'],
     additionalProperties: false,
   },
-  annotations: { readOnlyHint: true },
+  // Not read-only: it appends to the proposal's dry-run history, which the user
+  // sees in the drawer. It writes nothing to the workspace itself.
+  annotations: { readOnlyHint: false },
   execute: async (args) => {
     const proposalId = asString(args, 'proposalId');
     if (!proposalId) return fail('invalid_argument', 'proposalId is required');
@@ -322,7 +333,18 @@ const dryRunDraftTool: ModelContextTool = {
         ms: result.ms,
       };
     }
-    return { ok: true, result: result.result, ms: result.ms, registered: false };
+    return {
+      ok: true,
+      result: result.result,
+      wouldChange: result.mutations.map((mutation) => ({
+        kind: mutation.kind,
+        title: mutation.title,
+        changes: mutation.changes.map((change) => `${change.field}: ${change.before} -> ${change.after}`),
+      })),
+      logs: result.logs,
+      ms: result.ms,
+      registered: false,
+    };
   },
 };
 

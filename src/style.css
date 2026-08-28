@@ -268,3 +268,40 @@ button.icon.danger:hover { color: var(--bad); border-color: #55292b; }
 button.ghost { background: transparent; }
 button.ghost.danger { color: var(--dim); }
 button.ghost.danger:hover { color: var(--bad); border-color: #55292b; }
+
+/* ---------------------------------------------------------- dry-run diff --- */
+.diff-list { display: grid; gap: 6px; }
+.diff-count { margin: 0; font-size: 12px; color: var(--dim); }
+.diff-none { margin: 0; font-size: 12px; color: var(--ok); }
+.diff-row { display: flex; gap: 8px; align-items: baseline; padding: 7px 9px; border-radius: 6px; background: #12151b; border-left: 2px solid var(--line); }
+.diff-row[data-kind="create"] { border-left-color: var(--ok); }
+.diff-row[data-kind="update"] { border-left-color: var(--accent); }
+.diff-row[data-kind="remove"] { border-left-color: var(--bad); }
+.diff-mark { font: 600 12px/1.4 var(--mono); flex: 0 0 10px; color: var(--dim); }
+.diff-row[data-kind="create"] .diff-mark { color: var(--ok); }
+.diff-row[data-kind="update"] .diff-mark { color: var(--accent); }
+.diff-row[data-kind="remove"] .diff-mark { color: var(--bad); }
+.diff-body { display: grid; gap: 3px; min-width: 0; }
+.diff-title { font-size: 12px; color: var(--text); }
+.diff-change { font: 11px/1.5 var(--mono); color: #5b6371; word-break: break-word; }
+.diff-field { color: var(--dim); margin-right: 6px; }
+.diff-before { color: var(--bad); }
+.diff-after { color: var(--ok); }
+.dryrun-raw { margin-top: 8px; }
+.dryrun-raw summary { font-size: 11px; color: #5b6371; cursor: pointer; }
+
+/* ==================================================== isolation + demo ===== */
+#isolation[data-state="ok"] { display: none; }
+.isolation { border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; display: grid; gap: 8px; font-size: 13px; }
+.isolation strong { color: var(--text); }
+.isolation p { margin: 0; color: var(--dim); }
+.isolation.blocked { border: 1px solid #4a3a1d; background: #191510; }
+.isolation.reduced { border: 1px solid #4a3a1d; background: #191510; color: var(--dim); }
+.isolation .isolation-choice { color: #8b93a1; }
+.isolation button { justify-self: start; margin-top: 4px; }
+
+.demo { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.demo-button { justify-self: start; }
+.demo-status { margin: 0; font-size: 12px; color: var(--dim); min-height: 1em; }
+.drawer-queued { grid-column: 1 / -1; margin: 4px 0 0; font-size: 12px; color: var(--accent); }
+.drawer h2:focus { outline: 1px solid var(--line); outline-offset: 4px; }
