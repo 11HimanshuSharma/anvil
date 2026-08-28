@@ -5,7 +5,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,7 +71,21 @@ export async function withPage(url, fn, { port = 9333 } = {}) {
       return result.value;
     };
 
+    await connection.send('Page.enable');
+
     return await fn({
+      /** Saves a PNG of the current viewport. */
+      screenshot: async (path, { width = 1280, height = 900 } = {}) => {
+        await connection.send('Emulation.setDeviceMetricsOverride', {
+          width,
+          height,
+          deviceScaleFactor: 2,
+          mobile: false,
+        });
+        const { data } = await connection.send('Page.captureScreenshot', { format: 'png' });
+        writeFileSync(path, Buffer.from(data, 'base64'));
+        return path;
+      },
       /** Evaluates a single expression and returns its value. */
       evaluate: (expression) => call(`(async () => { return (${expression}); })()`),
       /** Runs a block of statements. Use `return` to send a value back. */

@@ -66,6 +66,8 @@ A note the spec made us find the hard way: `registerTool`'s promise cannot both 
 
 `propose_tool` returns `{ status: "pending_review", registered: false, callable: false }` and its description tells the agent to stop and wait. **Agents cannot approve their own tools**, because nothing in `src/tools/meta.ts` can reach the registry.
 
+![The review drawer: capability chips, a real dry run against the workspace, and the editable description](docs/drawer.png)
+
 ### Why approval is behavioural, not textual
 
 Showing someone forty lines of JavaScript and asking "approve?" is security theatre — the audience who cannot stand up an MCP server cannot audit JavaScript either. The drawer instead shows, in order:

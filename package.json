@@ -12,7 +12,8 @@
     "preview": "vite preview",
     "test:sandbox": "node scripts/run-sandbox-tests.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
-    "test": "node scripts/run-sandbox-tests.mjs && node scripts/run-e2e.mjs"
+    "test": "node scripts/run-sandbox-tests.mjs && node scripts/run-e2e.mjs",
+    "shots": "node scripts/shot.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.3",
