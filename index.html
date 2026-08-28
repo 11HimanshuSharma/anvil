@@ -3,69 +3,58 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Anvil — live tool registration probe</title>
+    <title>Anvil — a workspace your agent can extend</title>
     <meta
       name="description"
-      content="Go/no-go probe: can a WebMCP tool registered at runtime be called by the agent without a page reload?"
+      content="A reading queue whose tools are written at runtime, by your agent, with your approval."
     />
   </head>
   <body>
-    <main class="page">
-      <header class="head">
+    <div class="shell">
+      <header class="app-head">
         <div>
-          <h1>Anvil <span class="dim">— live registration probe</span></h1>
+          <h1>Anvil</h1>
           <p class="sub">
-            Verifying one assumption: a tool registered at 2:00:00 is callable at 2:00:05,
-            <strong>without a page reload</strong>.
+            A reading queue whose tools are written at runtime, by your agent, with your approval.
           </p>
         </div>
-        <div class="badge" id="mode-badge" data-mode="shim">detecting…</div>
+        <nav class="app-nav">
+          <a href="/probe.html">registration probe</a>
+          <a href="https://github.com/11HimanshuSharma/anvil" target="_blank" rel="noreferrer">source</a>
+        </nav>
       </header>
 
-      <section class="card">
-        <h2>1 · Environment</h2>
-        <ul class="chips" id="env-chips"></ul>
-        <p class="note">
-          <code>Origin-Agent-Cluster</code> is not readable from JavaScript — verify it with
-          <code>curl -I &lt;url&gt; | grep -i origin-agent</code>. A value of <code>?0</code>
-          disables WebMCP entirely.
-        </p>
-      </section>
+      <div class="columns">
+        <main class="workspace">
+          <h2 class="section-label">Workspace</h2>
+          <div id="items"></div>
+        </main>
 
-      <section class="card">
-        <h2>
-          2 · Tools the agent can see
-          <span class="counter" id="tool-count">0</span>
-        </h2>
-        <p class="note">
-          Rendered from <code>await modelContext.getTools()</code>, re-read on every
-          <code>toolchange</code> event. <code>toolchange</code> fired
-          <strong id="toolchange-count">0</strong> times.
-        </p>
-        <ol class="tools" id="tool-list"></ol>
-      </section>
+        <aside class="sidebar">
+          <section class="panel">
+            <h2 class="section-label">
+              Tool surface
+              <span class="hint">what your agent sees right now</span>
+            </h2>
+            <div id="surface"></div>
+          </section>
 
-      <section class="card">
-        <h2>3 · The experiment</h2>
-        <div class="actions">
-          <button id="btn-register" type="button" class="primary">Register a second tool</button>
-          <button id="btn-unregister" type="button">Unregister it</button>
-          <button id="btn-execute" type="button">Run <code>secret_handshake</code> in-page</button>
-        </div>
-        <ol class="steps">
-          <li>Open this page in the ChatGPT desktop app's browser (GPT-5.6 Sol or Terra).</li>
-          <li>Ask: <em>“What site tools are available?”</em> → should list one.</li>
-          <li>Click <strong>Register a second tool</strong>. Do not reload.</li>
-          <li>Ask: <em>“Call secret_handshake and tell me what it returns.”</em></li>
-          <li>Green if it answers <code>banana-4417</code>. Record the outcome in NOTES.md.</li>
-        </ol>
-      </section>
+          <section class="panel">
+            <h2 class="section-label">Try it</h2>
+            <p class="hint">
+              Open this page in ChatGPT's in-app browser, or in Chrome with
+              <code>chrome://flags/#enable-webmcp-testing</code>, then paste one of these.
+            </p>
+            <ul class="prompts" id="prompts"></ul>
+          </section>
 
-      <section class="card">
-        <h2>4 · Event log</h2>
-        <ol class="log" id="log"></ol>
-      </section>
-    </main>
+          <section class="panel">
+            <h2 class="section-label">Activity</h2>
+            <ol class="log" id="log"></ol>
+          </section>
+        </aside>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
