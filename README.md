@@ -43,13 +43,28 @@ document.modelContext.registerTool({
 }, { signal: abortController.signal });
 ```
 
-Three spec facts shape [`src/webmcp/registry.ts`](src/webmcp/registry.ts):
+Verified against the [WebMCP specification](https://webmachinelearning.github.io/webmcp/) and [Chrome's imperative API docs](https://developer.chrome.com/docs/ai/webmcp/imperative-api), not against second-hand summaries. Three facts shape [`src/webmcp/registry.ts`](src/webmcp/registry.ts):
 
 1. **There is no `unregisterTool()`.** You unregister by aborting the `AbortSignal` you passed to `registerTool`.
-2. **Aborting rejects the original `registerTool` promise**, so every registration attaches a `.catch()` at the call site. The probe asserts this: zero unhandled rejections across a full register → unregister → re-register cycle.
-3. **The spec documents an unregister/re-register race**, so every lifecycle operation runs through one serialized queue, and `toolchange` is raced against a 50 ms timer rather than depended on for correctness.
+2. **`registerTool` resolves once the tool is registered.** The signal's abort steps also reject that promise, but rejecting an already-settled promise is a no-op, so the ordinary unregister path is quiet. The `.catch()` at the call site is for the cases that genuinely reject: an already-aborted signal, a duplicate name, or an abort that lands mid-registration.
+3. **The spec documents an unregister/re-register race**, so every lifecycle operation runs through one serialized queue, and `toolchange` is raced against a 50 ms timer rather than depended on for correctness — the spec is explicit that its timing "cannot be relied upon".
 
-A note the spec made us find the hard way: `registerTool`'s promise cannot both resolve on success *and* reject on abort — it stays pending until the tool goes away. Awaiting it to completion hangs forever. The registry races it against a macrotask instead, so a duplicate-name rejection still surfaces while a successful registration proceeds.
+### The bug the shim was hiding
+
+`executeTool` does **not** take a tool name. It takes the `RegisteredTool` object from `getTools()` and resolves with a **`DOMString`** — the JSON-serialised result:
+
+```js
+const tools = await document.modelContext.getTools();
+const tool  = tools.find((t) => t.name === 'search_items');
+const raw   = await document.modelContext.executeTool(tool, { query: 'mvcc' });
+const result = JSON.parse(raw);
+```
+
+An earlier version of the local shim invented `executeTool(name, argsObject) → object`. Every in-page call passed locally and would have thrown in Chrome and in ChatGPT — the one place it mattered. The shim now models the real contract, three conformance assertions guard it, and every in-page call goes through one `callTool()` helper in [`src/webmcp/context.ts`](src/webmcp/context.ts).
+
+That helper also papers over a genuine disagreement between sources: the spec's IDL declares `object inputObject`, while Chrome's documentation passes a JSON string. It tries the object form and falls back to the string form on a `TypeError`. Worth a spec issue.
+
+One more: WebMCP's `ToolAnnotations` dictionary declares only `readOnlyHint` and `untrustedContentHint`. MCP's `destructiveHint` / `idempotentHint` are silently dropped by the WebIDL conversion, so Anvil no longer sets them — a hint that never reaches the agent is worse than none, because in review it reads as though it did.
 
 ## The loop
 
@@ -91,7 +106,7 @@ Every tool you keep is context your agent carries into every turn, and overlappi
 score = 0.6 · jaccard(description tokens) + 0.4 · trigram(name)      ≥ 0.55 → overlapping
 ```
 
-Three consequences: a proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action; the surface panel shows a live context-cost meter (*"~1,240 tokens of tool definitions"*); and tools unused for 14 days become retirement candidates.
+Two consequences are shipped: a proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action, demoting "Approve as a new tool anyway" to secondary; and the surface panel shows a live context-cost meter (*"~1,771 tokens of tool definitions"*). `retirementCandidates()` computes tools unused for 14 days but nothing calls it yet — see Known limitations.
 
 ## Security model
 
@@ -208,7 +223,7 @@ curl -sI https://<your-url> | grep -i -E 'origin-agent|permissions-policy|conten
 
 - **The `net` capability is bounded by the deployment's CSP.** The proxy fetch runs on the app's own origin, so `connect-src` is an outer bound that a per-tool allowlist cannot widen: a tool may request `api.example.com`, but if the deployed `connect-src` does not list it, the browser blocks the request before it leaves. The proxy returns an error saying exactly that rather than a bare "Failed to fetch". Read/write tools are unaffected.
 - One executor is reused across executions, so tools can pollute each other's globals. A correctness wart, not a capability leak — capabilities are enforced per execution, parent-side.
-- Toolpack export/import is not built. Retirement candidates are computed but not yet surfaced as chips.
+- **Retirement chips are not shipped.** `retirementCandidates()` in `surface/entropy.ts` is correct and unused; the surface panel does not yet render it, and per-tool call counts are stored and returned by `list_available_tools` but not displayed. Toolpack export/import is not built either.
 - `VITE_SANDBOX_ORIGIN` points the executor at a separate origin for defence in depth; using it also requires adding that origin to `frame-src` in [`vercel.json`](vercel.json).
 
 ## Submission

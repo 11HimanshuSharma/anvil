@@ -6,7 +6,7 @@ import { listTools } from './store/tools';
 import { builtinTools } from './tools/builtin';
 import { toModelContextTool } from './tools/custom';
 import { metaTools } from './tools/meta';
-import { binding, mc } from './webmcp/context';
+import { binding, callTool, mc } from './webmcp/context';
 import { ToolRegistry } from './webmcp/registry';
 import type { ModelContextTool } from './webmcp/types';
 import { mountAuditLog } from './ui/auditLog';
@@ -142,4 +142,4 @@ async function boot(): Promise<void> {
 void boot();
 
 // Exposed for DevTools and the Model Context Tool Inspector.
-Object.assign(window, { anvil: { mc, binding, registry, sandbox, reseed } });
+Object.assign(window, { anvil: { mc, binding, registry, sandbox, reseed, callTool } });

@@ -37,7 +37,7 @@ The approval step is where most of the design went. Anvil never shows you forty 
 3. **The description you're committing to** — editable, pre-filled with the agent's draft and flagged as agent-authored, with its cost in tokens.
 4. **Source** — collapsed, for the few who want it.
 
-And because a growing tool surface makes an agent *worse* at choosing, Anvil shows what your tools cost your agent in context, flags a proposal that overlaps an existing tool and offers to extend it instead, and marks tools unused for a fortnight as retirement candidates.
+And because a growing tool surface makes an agent *worse* at choosing, Anvil shows what your tools cost your agent in context, flags a proposal that overlaps an existing tool and offers to extend it instead. (Retirement of unused tools is computed but not yet surfaced in the UI.)
 
 ## 3. What people and agents can do together that was hard before
 
@@ -60,7 +60,8 @@ All tools register on the top-level document via `document.modelContext.register
 Three spec facts shaped the lifecycle engine:
 
 - **There is no `unregisterTool()`.** Every tool holds an `AbortController`; unregistration aborts its signal.
-- **Aborting rejects the original `registerTool` promise**, so every registration attaches a `.catch()` at the call site — a test asserts zero unhandled rejections across a full register → unregister → re-register cycle. That promise also cannot both resolve on success *and* reject on abort: it stays pending, so awaiting it to completion hangs forever. The registry races it against a macrotask.
+- **`registerTool` resolves once the tool is registered**, and the signal's abort steps reject that same promise — a no-op once it has settled, which is why the ordinary unregister path is quiet. Every registration still attaches a `.catch()` for the cases that do reject: an already-aborted signal, a duplicate name, an abort landing mid-registration.
+- **`executeTool` takes the `RegisteredTool` from `getTools()`, not a tool name, and resolves with a `DOMString`.** Getting this wrong is invisible behind a local shim, so Anvil's shim models the real contract and three conformance assertions guard it.
 - **The spec documents an unregister/re-register race**, so all lifecycle operations run through one serialized queue and `toolchange` is raced against a timer rather than depended on for correctness.
 
 The UI subscribes to `toolchange` and mirrors exactly what the agent currently sees. Custom tools register with `untrustedContentHint: true` and a `readOnlyHint` derived from the capabilities the *user granted* — never from anything the model claimed — so ChatGPT's own site-tools panel shows the correct read/write split.

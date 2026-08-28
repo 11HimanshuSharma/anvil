@@ -50,6 +50,46 @@ export const MODE_LABEL: Readonly<Record<ModelContextMode, string>> = Object.fre
   shim: 'local mode · no WebMCP in this browser',
 });
 
+/**
+ * Calls a tool the way the page should call it.
+ *
+ * `executeTool` takes the RegisteredTool object from `getTools()`, not a name,
+ * and resolves with a JSON *string*. Two independent sources also disagree on
+ * the arguments: the spec IDL says `object inputObject`, while Chrome's
+ * documentation passes a JSON string. Rather than bet on one, this tries the
+ * object form and falls back to the string form on a TypeError.
+ *
+ * Every in-page call goes through here, so the page exercises the same path
+ * the agent does instead of reaching for the callback directly.
+ */
+export async function callTool(
+  name: string,
+  args: Record<string, unknown> = {},
+  options: { signal?: AbortSignal } = {},
+): Promise<unknown> {
+  const tools = await mc.getTools();
+  const tool = tools.find((candidate) => candidate.name === name);
+  if (!tool) {
+    throw new Error(`No registered tool named "${name}"`);
+  }
+
+  let raw: unknown;
+  try {
+    raw = await mc.executeTool(tool, args, options);
+  } catch (error) {
+    if (!(error instanceof TypeError)) throw error;
+    raw = await mc.executeTool(tool, JSON.stringify(args), options);
+  }
+
+  if (typeof raw !== 'string') return raw;
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch {
+    // A tool that legitimately returns a bare string.
+    return raw;
+  }
+}
+
 export interface EnvironmentReport {
   readonly secureContext: boolean;
   readonly origin: string;

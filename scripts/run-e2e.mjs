@@ -74,6 +74,36 @@ await withPage(BASE, async ({ evaluate, run }) => {
   const before = await evaluate('(await window.anvil.mc.getTools()).length');
   check('builtins + meta registered', before === 8, `${before} tools (expected 8)`);
 
+  // Spec conformance. These exist because an earlier shim invented
+  // executeTool(name, argsObject) -> object, so every in-page call passed
+  // locally and would have thrown in Chrome and ChatGPT. The shim must model
+  // the real contract or it stops being a test of what ships.
+  const specShape = await run(`
+    const tools = await window.anvil.mc.getTools();
+    const tool = tools.find(t => t.name === 'list_items');
+    const out = {};
+    // executeTool takes the RegisteredTool, not a name.
+    try { await window.anvil.mc.executeTool('list_items', {}); out.nameRejected = false; }
+    catch (e) { out.nameRejected = e instanceof TypeError; }
+    // ...and resolves with a JSON string.
+    const raw = await window.anvil.mc.executeTool(tool, { limit: 1 });
+    out.returnsString = typeof raw === 'string';
+    out.parses = (() => { try { return Array.isArray(JSON.parse(raw).items); } catch { return false; } })();
+    // registerTool resolves on success rather than staying pending.
+    const ac = new AbortController();
+    const started = Date.now();
+    await window.anvil.mc.registerTool(
+      { name: 'spec_probe', description: 'Conformance probe.', inputSchema: { type: 'object' }, execute: async () => 'ok' },
+      { signal: ac.signal },
+    );
+    out.registerResolved = Date.now() - started < 2000;
+    ac.abort();
+    return out;
+  `);
+  check('executeTool refuses a bare tool name', specShape.nameRejected === true, 'TypeError as the IDL requires');
+  check('executeTool resolves with a JSON string', specShape.returnsString && specShape.parses, 'DOMString, parses');
+  check('registerTool resolves on success', specShape.registerResolved === true, 'does not hang');
+
   // 0. The cold-open path: a visitor with no agent attached can still see the
   // loop, because the demo button goes through the real propose_tool.
   await run("document.querySelector('#demo .demo-button').click();");
@@ -89,7 +119,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
 
   // 1. The agent proposes.
   const proposal = await evaluate(
-    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify(DRAFT)})`,
+    `window.anvil.callTool('propose_tool', ${JSON.stringify(DRAFT)})`,
   );
   check('propose_tool accepted', proposal?.ok === true, JSON.stringify(proposal?.status ?? proposal));
   check(
@@ -104,7 +134,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
 
   // 2. The dry run must not have touched the database.
   const unreadAfterDryRun = await evaluate(
-    "(await window.anvil.mc.executeTool('list_items', { status: 'unread', limit: 200 })).total",
+    "(await window.anvil.callTool('list_items', { status: 'unread', limit: 200 })).total",
   );
   check('dry run wrote nothing', unreadAfterDryRun === 18, `${unreadAfterDryRun} unread (expected 18)`);
 
@@ -128,7 +158,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
 
   // 3a. A second proposal arriving mid-review must not hijack the drawer.
   await evaluate(
-    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({
+    `window.anvil.callTool('propose_tool', ${JSON.stringify({
       name: 'queued_probe',
       title: 'Queued probe',
       description: 'A second proposal used to check that it queues instead of stealing the drawer.',
@@ -210,15 +240,15 @@ await withPage(BASE, async ({ evaluate, run }) => {
   );
 
   // 6. The agent calls it. Twice: same input, same output.
-  const first = await evaluate("window.anvil.mc.executeTool('triage_queue', { staleDays: 60 })");
+  const first = await evaluate("window.anvil.callTool('triage_queue', { staleDays: 60 })");
   check('agent can call it', typeof first?.changed === 'number', JSON.stringify(first?.changed ?? first));
 
   const unreadAfterLive = await evaluate(
-    "(await window.anvil.mc.executeTool('list_items', { status: 'unread', limit: 200 })).total",
+    "(await window.anvil.callTool('list_items', { status: 'unread', limit: 200 })).total",
   );
   check('live run actually wrote', unreadAfterLive < 18, `${unreadAfterLive} unread (was 18)`);
 
-  const second = await evaluate("window.anvil.mc.executeTool('triage_queue', { staleDays: 60 })");
+  const second = await evaluate("window.anvil.callTool('triage_queue', { staleDays: 60 })");
   check(
     'idempotent on a settled queue',
     second?.changed === 0,
@@ -231,7 +261,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
 
   // 8. Proposing a name that now exists is refused, and Escape closes a drawer.
   const duplicate = await evaluate(
-    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({ ...DRAFT, testCases: [] })})`,
+    `window.anvil.callTool('propose_tool', ${JSON.stringify({ ...DRAFT, testCases: [] })})`,
   );
   check(
     'duplicate name refused',
@@ -240,7 +270,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
   );
 
   const readOnlyProposal = await evaluate(
-    `window.anvil.mc.executeTool('propose_tool', ${JSON.stringify({
+    `window.anvil.callTool('propose_tool', ${JSON.stringify({
       name: 'count_by_source',
       title: 'Count items by source',
       description: 'Counts saved links grouped by their source, so I can see where my queue comes from.',

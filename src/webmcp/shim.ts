@@ -1,4 +1,5 @@
 import type {
+  ExecuteToolOptions,
   ModelContextLike,
   ModelContextTool,
   RegisterToolOptions,
@@ -47,11 +48,11 @@ class ModelContextShim extends EventTarget implements ModelContextLike {
     this.#tools.set(tool.name, tool);
     this.#scheduleToolChange();
 
-    // Spec quirk: the registration promise settles only when the tool goes
-    // away. Callers must attach a `.catch()` immediately (see registry.ts).
-    return new Promise<void>((_resolve, reject) => {
-      if (!signal) return; // never unregistered; promise stays pending, as in the spec
-      signal.addEventListener(
+    return new Promise<void>((resolve, reject) => {
+      // The spec's abort steps unregister the tool and reject this promise.
+      // Once it has resolved that rejection is a no-op, which is why the
+      // common unregister path is quiet rather than noisy.
+      signal?.addEventListener(
         'abort',
         () => {
           if (this.#tools.get(tool.name) === tool) {
@@ -62,6 +63,10 @@ class ModelContextShim extends EventTarget implements ModelContextLike {
         },
         { once: true },
       );
+      // Registration is complete: resolve, as the spec requires. An earlier
+      // version left this pending on the theory that the promise settled only
+      // on abort - which is what made `await registerTool(...)` hang.
+      resolve();
     });
   }
 
@@ -70,16 +75,44 @@ class ModelContextShim extends EventTarget implements ModelContextLike {
     return Promise.resolve(Object.freeze(descriptors));
   }
 
-  async executeTool(name: string, args: Record<string, unknown> = {}): Promise<unknown> {
-    const tool = this.#tools.get(name);
-    if (!tool) {
-      throw new DOMException(`No such tool: ${name}`, 'NotFoundError');
+  /**
+   * Mirrors the spec exactly: takes the RegisteredTool from `getTools()` - not
+   * a name - and resolves with a STRING.
+   *
+   * Getting this wrong is how a shim stops being a test of what ships. An
+   * earlier version here took a name and returned an object, so every in-page
+   * call passed locally and would have thrown in Chrome and ChatGPT.
+   */
+  async executeTool(
+    tool: ToolDescriptor,
+    inputObject: Record<string, unknown> | string = {},
+    options: ExecuteToolOptions = {},
+  ): Promise<string> {
+    if (typeof tool !== 'object' || tool === null || typeof tool.name !== 'string') {
+      throw new TypeError('executeTool expects the RegisteredTool from getTools(), not a tool name');
     }
+    const registered = this.#tools.get(tool.name);
+    if (!registered) {
+      throw new DOMException(`No such tool: ${tool.name}`, 'NotFoundError');
+    }
+
+    // The spec's IDL says `object inputObject`; Chrome's documentation passes a
+    // JSON string. Accept both rather than betting on one.
+    const args: Record<string, unknown> =
+      typeof inputObject === 'string'
+        ? (JSON.parse(inputObject || '{}') as Record<string, unknown>)
+        : inputObject;
+
     const controller = new AbortController();
-    const result = await tool.execute(args, { signal: controller.signal });
-    // The real implementation JSON-serialises results; do the same so a
-    // non-serialisable return value fails here rather than silently in ChatGPT.
-    return JSON.parse(JSON.stringify(result ?? null)) as unknown;
+    if (options.signal) {
+      options.signal.addEventListener('abort', () => controller.abort(options.signal?.reason), {
+        once: true,
+      });
+    }
+    const result = await registered.execute(args, { signal: controller.signal });
+    // Results are JSON-serialised for transmission, so a non-serialisable
+    // return fails here rather than silently in the agent.
+    return JSON.stringify(result ?? null) ?? 'null';
   }
 
   /**

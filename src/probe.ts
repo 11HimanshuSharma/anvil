@@ -1,5 +1,5 @@
 import './style.css';
-import { binding, environmentReport, mc, MODE_LABEL } from './webmcp/context';
+import { binding, callTool, environmentReport, mc, MODE_LABEL } from './webmcp/context';
 import { ToolRegistry } from './webmcp/registry';
 import type { ModelContextTool, ToolDescriptor } from './webmcp/types';
 
@@ -196,7 +196,8 @@ async function executeHandshake(): Promise<void> {
 
     let result: unknown;
     if (binding.canExecuteLocally) {
-      result = await mc.executeTool(name, {});
+      // getTools() -> executeTool(RegisteredTool, args), the agent's own path.
+      result = await callTool(name, {});
     } else {
       const tool = registry.get(name);
       if (!tool) throw new Error(`${name} is not held by the registry`);

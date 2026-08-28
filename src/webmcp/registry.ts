@@ -6,9 +6,11 @@ import { isToolNameValid } from './types';
  *
  * Three spec facts drive this design (build plan §3.5):
  *  1. There is no `unregisterTool()` — you abort the signal you registered with.
- *  2. Aborting rejects the original `registerTool` promise, so every register
- *     call needs a `.catch()` attached at the call site or the console fills
- *     with unhandled rejections.
+ *  2. The registration promise RESOLVES once the tool is registered. The
+ *     signal's abort steps also reject it, but rejecting an already-settled
+ *     promise is a no-op, so the common case is quiet. The `.catch()` below is
+ *     for the cases that do reject: an already-aborted signal, and an abort
+ *     that lands before registration completes.
  *  3. Unregister/re-register of the same name is an explicitly documented race,
  *     so every mutation goes through one queue.
  */
@@ -32,9 +34,10 @@ export class ToolRegistry {
       this.#validate(tool);
       const ac = new AbortController();
       const registration = this.#mc.registerTool(tool, { signal: ac.signal });
-      // Abort rejects this promise later. Swallow it here, at the call site.
+      // An abort that lands mid-registration rejects this. Swallow it here, at
+      // the call site, so it never surfaces as an unhandled rejection.
       registration.catch(() => undefined);
-      await Promise.race([registration, microtaskTick()]);
+      await registration;
       this.#entries.set(tool.name, { ac, tool });
     });
   }
@@ -97,13 +100,4 @@ export class ToolRegistry {
       new Promise<void>((resolve) => setTimeout(resolve, 50)),
     ]);
   }
-}
-
-/**
- * `registerTool`'s promise stays pending until the tool is unregistered, so we
- * cannot simply `await` it. Give the implementation a microtask to reject on
- * synchronous validation failures, then continue.
- */
-function microtaskTick(): Promise<void> {
-  return new Promise<void>((resolve) => setTimeout(resolve, 0));
 }

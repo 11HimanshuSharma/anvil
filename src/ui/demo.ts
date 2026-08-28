@@ -1,4 +1,4 @@
-import { mc } from '../webmcp/context';
+import { callTool } from '../webmcp/context';
 import { h, mount } from './dom';
 
 /**
@@ -76,8 +76,7 @@ export function mountDemoButton(target: HTMLElement): void {
         click: (_event, element) => {
           element.disabled = true;
           status.textContent = 'Running the draft against your real items…';
-          void mc
-            .executeTool('propose_tool', DEMO_DRAFT as unknown as Record<string, unknown>)
+          void callTool('propose_tool', DEMO_DRAFT as unknown as Record<string, unknown>)
             .then((result) => {
               const failed =
                 typeof result === 'object' && result !== null && (result as { ok?: unknown }).ok === false;

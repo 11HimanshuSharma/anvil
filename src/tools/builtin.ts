@@ -281,7 +281,6 @@ const removeItemTool: ModelContextTool = {
     required: ['id'],
     additionalProperties: false,
   },
-  annotations: { destructiveHint: true, idempotentHint: true },
   execute: async (args) => {
     try {
       const id = requiredString(args, 'id');

@@ -68,7 +68,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
     "(await window.anvil.mc.getTools()).some(t => t.name === 'triage_queue')",
   );
   if (!already) {
-    await evaluate(`window.anvil.mc.executeTool('propose_tool', ${JSON.stringify(DRAFT)})`);
+    await evaluate(`window.anvil.callTool('propose_tool', ${JSON.stringify(DRAFT)})`);
     await waitFor(evaluate, "document.getElementById('drawer').dataset.open === 'true'", {
       label: 'drawer opens',
     });
@@ -87,7 +87,7 @@ await withPage(BASE, async ({ evaluate, run }) => {
     // measuring the queue draining, not the tool's determinism.
     await evaluate('window.anvil.reseed()');
     const started = Date.now();
-    const result = await evaluate("window.anvil.mc.executeTool('triage_queue', { staleDays: 60 })");
+    const result = await evaluate("window.anvil.callTool('triage_queue', { staleDays: 60 })");
     durations.push(Date.now() - started);
     outcomes.push(hash(result));
   }

@@ -18,12 +18,16 @@ export type JsonValue =
 /** A JSON Schema object. Not modelled structurally on purpose. */
 export type JsonSchema = Record<string, unknown>;
 
+/**
+ * The spec's ToolAnnotations dictionary declares exactly two members. MCP's
+ * other hints (destructiveHint, idempotentHint, openWorldHint) are not part of
+ * WebMCP and are silently dropped by the WebIDL conversion, so we do not set
+ * them: a hint that never reaches the agent is worse than no hint, because it
+ * reads in review as though it did.
+ */
 export interface ToolAnnotations {
   readonly readOnlyHint?: boolean;
-  readonly destructiveHint?: boolean;
-  readonly idempotentHint?: boolean;
-  readonly openWorldHint?: boolean;
-  /** Output is not authored by the site developer. Spec's mitigation for tool poisoning. */
+  /** Output is not authored by the site developer. The spec's tool-poisoning mitigation. */
   readonly untrustedContentHint?: boolean;
 }
 
@@ -43,17 +47,44 @@ export interface ModelContextTool {
   ) => unknown | Promise<unknown>;
 }
 
-/** What `getTools()` hands back: the tool minus its `execute` callback. */
-export type ToolDescriptor = Omit<ModelContextTool, 'execute'>;
+/**
+ * What `getTools()` hands back. Per the spec this is a `RegisteredTool`: the
+ * tool minus its callback, plus the window and origin it was registered from.
+ *
+ * This object - not the tool's name - is what `executeTool` takes.
+ */
+export interface ToolDescriptor {
+  readonly name: string;
+  readonly title?: string;
+  readonly description: string;
+  readonly inputSchema?: JsonSchema;
+  readonly annotations?: ToolAnnotations;
+  readonly window?: Window;
+  readonly origin?: string;
+}
 
 export interface RegisterToolOptions {
+  readonly signal?: AbortSignal;
+}
+
+export interface ExecuteToolOptions {
   readonly signal?: AbortSignal;
 }
 
 export interface ModelContextLike extends EventTarget {
   registerTool(tool: ModelContextTool, options?: RegisterToolOptions): Promise<void>;
   getTools(): Promise<readonly ToolDescriptor[]>;
-  executeTool(name: string, args?: Record<string, unknown>): Promise<unknown>;
+  /**
+   * Takes the RegisteredTool from getTools(), not a name, and resolves with a
+   * STRING - the JSON-serialised result. Use `callTool` in context.ts rather
+   * than calling this directly; it handles the lookup, the argument encoding
+   * disagreement between the spec and Chrome's docs, and the parse.
+   */
+  executeTool(
+    tool: ToolDescriptor,
+    inputObject?: Record<string, unknown> | string,
+    options?: ExecuteToolOptions,
+  ): Promise<string | unknown>;
 }
 
 export const MODEL_CONTEXT_MODES = ['native', 'native-legacy', 'shim'] as const;
