@@ -109,7 +109,7 @@ score = 0.6 · jaccard(description tokens) + 0.4 · trigram(name)      ≥ 0.55 
 Three consequences, all shipped:
 
 1. A proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action, demoting "Approve as a new tool anyway" to secondary.
-2. The surface panel shows a live context-cost meter — *"9 tools · ~1,771 tokens of definitions · 6 read, 3 write"* — plus per-tool usage (*"2 calls, last today"* / *"never called"*).
+2. The surface panel shows a live context-cost meter — *"8 tools · ~1,771 tokens of definitions · 4 read, 4 write"* — plus per-tool usage (*"2 calls, last today"* / *"never called"*).
 3. Tools that stop earning their keep get a **retire?** chip, which unregisters and archives them, freeing the context their definition was costing.
 
 The threshold is **calibrated, not guessed** (`npm run calibrate`):

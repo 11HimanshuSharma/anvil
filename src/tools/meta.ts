@@ -42,16 +42,42 @@ function asString(args: Record<string, unknown>, key: string): string | undefine
  * that last set, two pending proposals could share a name and the second would
  * fail at the Approve click with a raw duplicate error - far too late.
  */
-async function reservedNames(): Promise<Set<string>> {
+async function nameClash(name: string): Promise<{ detail: string; hint: string } | null> {
+  if (builtinTools.some((tool) => tool.name === name)) {
+    return {
+      detail: `"${name}" is a built-in tool of this workspace`,
+      hint: 'Pick a different name. Call list_available_tools to see what exists.',
+    };
+  }
+
   const [custom, pending] = await Promise.all([
     listTools({ includeArchived: true }),
     pendingProposals(),
   ]);
-  return new Set([
-    ...builtinTools.map((tool) => tool.name),
-    ...custom.map((tool) => tool.name),
-    ...pending.map((proposal) => proposal.draft.name),
-  ]);
+
+  const stored = custom.find((tool) => tool.name === name);
+  if (stored) {
+    // Saying *why* matters: a retired tool is invisible in the tool list, so a
+    // bare "already exists" reads as a bug rather than as history.
+    return stored.archivedAt === null
+      ? {
+          detail: `A tool named "${name}" is already registered`,
+          hint: 'Either pick a different name, or propose extending the existing tool with an extra parameter.',
+        }
+      : {
+          detail: `"${name}" belonged to a tool the user retired on ${new Date(stored.archivedAt).toDateString()}. Retired tools keep their name so their history stays attached to it.`,
+          hint: 'Pick a different name, or ask the user whether they want the retired tool back rather than a new one.',
+        };
+  }
+
+  if (pending.some((proposal) => proposal.draft.name === name)) {
+    return {
+      detail: `"${name}" is held by a proposal still awaiting review in the page`,
+      hint: 'Wait for the user to approve or reject that proposal before proposing this name again.',
+    };
+  }
+
+  return null;
 }
 
 function parseCapabilities(value: unknown): Capability[] | Failure {
@@ -159,12 +185,9 @@ const proposeTool: ModelContextTool = {
         'Try a snake_case name like find_near_duplicates.',
       );
     }
-    if ((await reservedNames()).has(name)) {
-      return fail(
-        'name_taken',
-        `The name "${name}" is already taken by a registered tool, an archived one, or a proposal still awaiting review`,
-        'Call list_available_tools to see what exists. Either pick a different name, or wait for the pending proposal to be reviewed.',
-      );
+    const clash = await nameClash(name);
+    if (clash) {
+      return fail('name_taken', clash.detail, clash.hint);
     }
     if (!description || description.trim() === '') {
       return fail('invalid_argument', 'description is required and must not be empty');
