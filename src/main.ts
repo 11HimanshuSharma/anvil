@@ -2,11 +2,15 @@ import './style.css';
 import { sandbox } from './sandbox/host';
 import { record } from './store/audit';
 import { ensureSeeded } from './store/items';
+import { listTools } from './store/tools';
 import { builtinTools } from './tools/builtin';
+import { toModelContextTool } from './tools/custom';
+import { metaTools } from './tools/meta';
 import { binding, mc } from './webmcp/context';
 import { ToolRegistry } from './webmcp/registry';
 import type { ModelContextTool } from './webmcp/types';
 import { mountAuditLog } from './ui/auditLog';
+import { mountDrawer } from './ui/drawer';
 import { el, h, mount } from './ui/dom';
 import { mountItemsView } from './ui/items';
 import { mountSurfacePanel } from './ui/surfacePanel';
@@ -97,17 +101,31 @@ async function boot(): Promise<void> {
   await ensureSeeded();
 
   mountItemsView(el('items'));
+  mountDrawer(el('drawer'), registry);
   mountSurfacePanel(el('surface'));
   mountAuditLog(el('log'));
   renderPrompts(el('prompts'));
 
-  for (const tool of builtinTools) {
+  for (const tool of [...builtinTools, ...metaTools]) {
     try {
       await registry.register(instrumented(tool));
     } catch (error) {
       console.error(`[anvil] failed to register ${tool.name}`, error);
     }
   }
+
+  // Tools the user approved in an earlier session. They already carry
+  // descriptionAccepted, which toModelContextTool re-checks before registering.
+  for (const def of await listTools()) {
+    try {
+      await registry.register(toModelContextTool(def));
+    } catch (error) {
+      console.error(`[anvil] failed to restore ${def.name}`, error);
+    }
+  }
+
+  // Warm the executor so the first proposal's dry run is not paying for boot.
+  void sandbox.warm().catch(() => undefined);
 
   if (binding.mode === 'shim') {
     console.info(
