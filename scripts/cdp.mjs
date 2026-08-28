@@ -35,7 +35,13 @@ export function sleep(ms) {
  * Opens `url` in a fresh headless Chrome and hands `fn` an `evaluate` function.
  * Always tears the browser down, even when `fn` throws.
  */
-export async function withPage(url, fn, { port = 9333 } = {}) {
+/**
+ * Extra Chrome flags, e.g. CHROME_ARGS=--enable-features=WebMCP to run any
+ * suite against the real native implementation instead of the local shim.
+ */
+const ENV_ARGS = (process.env.CHROME_ARGS ?? '').split(' ').filter(Boolean);
+
+export async function withPage(url, fn, { port = 9333, args = [] } = {}) {
   const profileDir = mkdtempSync(join(tmpdir(), 'anvil-chrome-'));
   const chrome = spawn(
     findChrome(),
@@ -46,6 +52,8 @@ export async function withPage(url, fn, { port = 9333 } = {}) {
       '--no-default-browser-check',
       // CI containers run as root, where Chrome's own sandbox refuses to start.
       ...(process.env.CI ? ['--no-sandbox', '--disable-dev-shm-usage'] : []),
+      ...args,
+      ...ENV_ARGS,
       `--remote-debugging-port=${port}`,
       `--user-data-dir=${profileDir}`,
       url,

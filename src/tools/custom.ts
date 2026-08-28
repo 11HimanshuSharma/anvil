@@ -35,6 +35,10 @@ export function toModelContextTool(def: ToolDef): ModelContextTool {
     },
     execute: async (args, options) => {
       const started = performance.now();
+      // Honour the agent's cancellation when there is one to honour. Chrome 152
+      // omits the options argument the spec declares as required, so this is
+      // optional-chained: reading it directly is a TypeError, and the agent
+      // sees only "the invocation failed".
       const outcome = await sandbox.exec(
         {
           toolName: def.name,
@@ -44,8 +48,7 @@ export function toModelContextTool(def: ToolDef): ModelContextTool {
           networkDomains: def.networkDomains,
           mode: 'live',
         },
-        // Honour the agent's cancellation: it wires straight to the watchdog.
-        options.signal,
+        options?.signal,
       );
 
       await record({

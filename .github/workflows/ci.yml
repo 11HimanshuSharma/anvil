@@ -40,6 +40,12 @@ jobs:
       - name: End-to-end propose/approve/register loop
         run: npm run test:e2e
 
+      # The same loop against Chrome's real WebMCP implementation. This is the
+      # one that catches spec-vs-implementation gaps; the shim can only ever
+      # prove we agree with ourselves.
+      - name: End-to-end against native WebMCP
+        run: npm run test:native
+
       - name: Overlap threshold calibration
         run: npm run calibrate
 

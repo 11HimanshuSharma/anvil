@@ -54,10 +54,15 @@ export const MODE_LABEL: Readonly<Record<ModelContextMode, string>> = Object.fre
  * Calls a tool the way the page should call it.
  *
  * `executeTool` takes the RegisteredTool object from `getTools()`, not a name,
- * and resolves with a JSON *string*. Two independent sources also disagree on
- * the arguments: the spec IDL says `object inputObject`, while Chrome's
- * documentation passes a JSON string. Rather than bet on one, this tries the
- * object form and falls back to the string form on a TypeError.
+ * and resolves with a JSON *string*.
+ *
+ * The two sources disagree on the arguments: the spec's IDL declares
+ * `object inputObject`, while Chrome's documentation passes a JSON string.
+ * Chrome 152 follows its documentation - passing an object fails with
+ * `UnknownError: Failed to parse input arguments` - so the string form is
+ * tried first, with the object form as the fallback for an implementation
+ * that follows the IDL instead. Verified against the real thing with
+ * `npm run test:native`, not against the shim.
  *
  * Every in-page call goes through here, so the page exercises the same path
  * the agent does instead of reaching for the callback directly.
@@ -75,10 +80,16 @@ export async function callTool(
 
   let raw: unknown;
   try {
-    raw = await mc.executeTool(tool, args, options);
-  } catch (error) {
-    if (!(error instanceof TypeError)) throw error;
     raw = await mc.executeTool(tool, JSON.stringify(args), options);
+  } catch (stringFormError) {
+    // Do not narrow the retry by error type: Chrome reports the mismatch as an
+    // UnknownError DOMException, not a TypeError, which an earlier version of
+    // this fallback let through untouched.
+    try {
+      raw = await mc.executeTool(tool, args, options);
+    } catch {
+      throw stringFormError;
+    }
   }
 
   if (typeof raw !== 'string') return raw;

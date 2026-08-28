@@ -4,6 +4,43 @@ Running log of decisions and experiment outcomes. Newest first.
 
 ---
 
+## 2026-08-29 — GO/NO-GO: **GREEN**, against real Chrome WebMCP
+
+`chrome://flags/#enable-webmcp-testing` corresponds to the `WebMCP` feature,
+which can be enabled from the command line. So the §1 question was answerable
+locally, without deploying:
+
+    CHROME_ARGS=--enable-features=WebMCP  ->  document.modelContext exists
+
+**A tool registered at runtime is callable in the same session, with no reload.**
+The full end-to-end suite passes against the native implementation: 37/37,
+including "registered without a reload — 8 → 9 tools" and the agent calling the
+new tool by name. `npm run test:native` runs it; it is now in CI.
+
+Running against the real thing immediately found three bugs the shim could not:
+
+1. **`execute()` receives no options argument.** The spec declares
+   `ToolExecuteCallbackOptions` with a REQUIRED `AbortSignal`; Chrome 152 calls
+   `execute(inputObject)` with one argument. `custom.ts` read `options.signal`,
+   so **every agent-authored tool failed on its first call** with the opaque
+   "Tool was executed but the invocation failed". This was the whole demo.
+   Now optional-chained, and the callback type marks `options` optional so the
+   compiler forces every call site to cope.
+2. **`executeTool` wants a JSON string, not an object.** The spec's IDL says
+   `object inputObject`; Chrome follows its own docs. Passing an object fails
+   with `UnknownError: Failed to parse input arguments`. `callTool` now sends
+   the string form first and falls back to the object form.
+3. The earlier `TypeError`-only retry never fired, because Chrome reports both
+   mismatches as `UnknownError` DOMExceptions.
+
+`RegisteredTool` came back with exactly the spec's shape:
+`annotations, description, inputSchema, name, origin, title, window`.
+
+**Still unverified:** ChatGPT's in-app browser specifically. Chrome is the
+reference implementation, not a guarantee about theirs.
+
+---
+
 ## 2026-08-28 — Step 1: live-registration go/no-go probe
 
 **Question (build plan §1):** is a tool registered at 2:00:00 callable by the agent at 2:00:05 *without a page reload*? Everything downstream is worthless if the answer is no.

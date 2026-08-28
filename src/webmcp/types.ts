@@ -41,9 +41,18 @@ export interface ModelContextTool {
   readonly description: string;
   readonly inputSchema: JsonSchema;
   readonly annotations?: ToolAnnotations;
+  /**
+   * The spec declares a second argument, `ToolExecuteCallbackOptions`, whose
+   * `signal` is REQUIRED. Chrome 152 passes no second argument at all.
+   *
+   * It is typed optional here so the compiler forces every call site to cope.
+   * Reading `options.signal` unguarded is a TypeError that surfaces to the
+   * agent as the opaque "Tool was executed but the invocation failed", which
+   * is a miserable thing to debug from the far side.
+   */
   readonly execute: (
     args: Record<string, unknown>,
-    options: ToolExecuteCallbackOptions,
+    options?: ToolExecuteCallbackOptions,
   ) => unknown | Promise<unknown>;
 }
 

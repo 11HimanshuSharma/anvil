@@ -102,10 +102,25 @@ await withPage(BASE, async ({ evaluate, run }) => {
     const tool = tools.find(t => t.name === 'list_items');
     const out = {};
     // executeTool takes the RegisteredTool, not a name.
-    try { await window.anvil.mc.executeTool('list_items', {}); out.nameRejected = false; }
-    catch (e) { out.nameRejected = e instanceof TypeError; }
-    // ...and resolves with a JSON string.
-    const raw = await window.anvil.mc.executeTool(tool, { limit: 1 });
+    try { await window.anvil.mc.executeTool('list_items', '{}'); out.nameRejected = false; }
+    catch { out.nameRejected = true; }
+
+    // Which argument encoding does THIS implementation accept? The spec's IDL
+    // says object; Chrome follows its docs and wants a JSON string. Record it
+    // rather than assuming, so the same suite is meaningful against both.
+    out.acceptsString = await (async () => {
+      try { return typeof (await window.anvil.mc.executeTool(tool, '{"limit":1}')) === 'string'; }
+      catch { return false; }
+    })();
+    out.acceptsObject = await (async () => {
+      try { await window.anvil.mc.executeTool(tool, { limit: 1 }); return true; }
+      catch { return false; }
+    })();
+
+    // ...and resolves with a JSON string, whichever encoding it took.
+    const raw = out.acceptsString
+      ? await window.anvil.mc.executeTool(tool, '{"limit":1}')
+      : await window.anvil.mc.executeTool(tool, { limit: 1 });
     out.returnsString = typeof raw === 'string';
     out.parses = (() => { try { return Array.isArray(JSON.parse(raw).items); } catch { return false; } })();
     // registerTool resolves on success rather than staying pending.
@@ -117,11 +132,39 @@ await withPage(BASE, async ({ evaluate, run }) => {
     );
     out.registerResolved = Date.now() - started < 2000;
     ac.abort();
+
+    // Does this implementation pass the options argument the spec declares as
+    // required? Chrome 152 does not. Custom tools must survive either way -
+    // reading options.signal unguarded is a TypeError the agent only ever sees
+    // as "the invocation failed".
+    const ac2 = new AbortController();
+    await window.anvil.mc.registerTool(
+      {
+        name: 'options_probe',
+        description: 'Reports whether execute receives the options argument.',
+        inputSchema: { type: 'object', properties: {} },
+        execute: async (args, options) => ({ gotOptions: options !== undefined }),
+      },
+      { signal: ac2.signal },
+    );
+    const probeTool = (await window.anvil.mc.getTools()).find(t => t.name === 'options_probe');
+    const probeRaw = await window.anvil.callTool('options_probe', {});
+    out.executePassesOptions = probeRaw?.gotOptions === true;
+    ac2.abort();
     return out;
   `);
-  check('executeTool refuses a bare tool name', specShape.nameRejected === true, 'TypeError as the IDL requires');
+  check('executeTool refuses a bare tool name', specShape.nameRejected === true, 'requires the RegisteredTool');
   check('executeTool resolves with a JSON string', specShape.returnsString && specShape.parses, 'DOMString, parses');
   check('registerTool resolves on success', specShape.registerResolved === true, 'does not hang');
+  console.log(
+    `       note: execute() receives options: ${specShape.executePassesOptions} ` +
+      '(the spec declares it required; a custom tool must not assume it)',
+  );
+  check(
+    'callTool handles this implementation encoding',
+    specShape.acceptsString || specShape.acceptsObject,
+    `accepts string: ${specShape.acceptsString}, object: ${specShape.acceptsObject}`,
+  );
 
   // 0. The cold-open path: a visitor with no agent attached can still see the
   // loop, because the demo button goes through the real propose_tool.
