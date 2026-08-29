@@ -2,7 +2,7 @@
 
 Paste-ready text for the four required prompts, plus the video plan and the pre-submit checklist.
 
-- **Live URL:** _(fill in after deploy)_
+- **Live URL:** https://anvil-11himanshusharma.vercel.app
 - **Repo:** https://github.com/11HimanshuSharma/anvil
 - **Video:** _(fill in; must be public YouTube, under 3:00, with audio)_
 
@@ -96,7 +96,8 @@ Record a fallback take with a reload after approval, in case live registration i
 
 ## Pre-submit checklist
 
-- [ ] Deployed to HTTPS; `curl -sI <url> | grep -i origin-agent` returns `?1`
+- [x] Deployed to HTTPS; `Origin-Agent-Cluster: ?1` confirmed, and the CSP split verified live (app origin has no `unsafe-eval`, `/sandbox/` does)
+- [x] Full suite re-run against the live URL: 37/37 shim, 37/37 native WebMCP, 21/21 containment, 21/21 fallback, 10/10 variance
 - [ ] Opened in ChatGPT's in-app browser on GPT-5.6 Sol or Terra; **live registration confirmed without a reload**
 - [ ] Sandbox confirmed working in that browser (or the fallback banner confirmed to appear and work)
 - [ ] Video under 3:00, uploaded, **set to Public** (not Unlisted)

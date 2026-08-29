@@ -4,6 +4,36 @@ Running log of decisions and experiment outcomes. Newest first.
 
 ---
 
+## 2026-08-29 — Live deployment verified end to end
+
+`https://anvil-11himanshusharma.vercel.app`
+
+Everything re-run against the deployed URL, not localhost:
+
+| Check | Result |
+| --- | --- |
+| End-to-end loop (shim path) | 37/37 |
+| End-to-end loop against **native** WebMCP | 37/37 |
+| Sandbox containment under the production CSP | 21/21 |
+| Reduced-isolation fallback | 21/21 |
+| Variance, 10 trials | 10/10 identical, digest `2fb94fd62337` |
+| `/probe.html` | registers live, returns `banana-4417` |
+
+The header split - the one thing local tests structurally cannot verify - landed
+correctly:
+
+    app origin        script-src 'self'                            (no eval)
+    /sandbox/         script-src 'unsafe-inline' 'unsafe-eval'
+    both              Origin-Agent-Cluster: ?1
+
+**First deploy was unreachable.** Vercel Deployment Protection was on by
+default, so every URL 302'd to `vercel.com/login` - a judge, and ChatGPT's
+browser, would have seen a login page rather than the app. Disabled in project
+settings. Worth remembering that the deploy succeeding is not the same as the
+deploy being *reachable*.
+
+---
+
 ## 2026-08-29 — GO/NO-GO: **GREEN**, against real Chrome WebMCP
 
 `chrome://flags/#enable-webmcp-testing` corresponds to the `WebMCP` feature,

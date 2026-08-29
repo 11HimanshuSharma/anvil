@@ -5,7 +5,7 @@
 **A workspace whose tools are written at runtime, by your agent, with your approval.**
 
 - **Repo:** https://github.com/11HimanshuSharma/anvil
-- **Live URL:** _(pending first deploy)_
+- **Live URL:** https://anvil-11himanshusharma.vercel.app
 - **Demo video:** _(pending)_
 
 WebMCP's own framing is that a *site* declares the tools it exposes — the question is "what can a site let an agent do?", and the developer chooses the answer at build time. Anvil asks the adjacent question: what if the user chooses, at runtime? the moment your agent nails a fiddly task, you turn that one-off success into a permanently callable WebMCP tool. The agent writes the code, you approve the behaviour and own the wording, and it registers live — no reload, no deploy, no OAuth flow.
@@ -109,7 +109,7 @@ score = 0.6 · jaccard(description tokens) + 0.4 · trigram(name)      ≥ 0.55 
 Three consequences, all shipped:
 
 1. A proposal that overlaps an existing tool makes **"Extend `existing_tool` instead"** the drawer's primary action, demoting "Approve as a new tool anyway" to secondary.
-2. The surface panel shows a live context-cost meter — *"8 tools · ~1,771 tokens of definitions · 4 read, 4 write"* — plus per-tool usage (*"2 calls, last today"* / *"never called"*).
+2. The surface panel shows a live context-cost meter — *"8 tools · ~1,890 tokens of definitions · 4 read, 4 write"* — plus per-tool usage (*"2 calls, last today"* / *"never called"*).
 3. Tools that stop earning their keep get a **retire?** chip, which unregisters and archives them, freeing the context their definition was costing.
 
 The threshold is **calibrated, not guessed** (`npm run calibrate`):
